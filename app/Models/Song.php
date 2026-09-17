@@ -17,8 +17,36 @@ class Song extends Model
         'album_art', 
         'file_path', 
         'artist_image', 
-        'lyrics'
+        'lyrics',
+        'itunes_track_id',
+        'preview_url',
+        'artwork_url',
+        'itunes_artist_id',
+        'youtube_id',
     ];
+
+    /**
+     * URL audio yang bisa diputar.
+     * Prioritas: youtube streaming (fetch API on demand) -> preview_url -> file_path
+     * Note: Untuk youtube, stream URL akan digenerate dinamis via Controller. 
+     * Di sini kita kembalikan route helper khusus.
+     */
+    public function getPlayableUrlAttribute(): string
+    {
+        if ($this->youtube_id) {
+            return route('youtube.stream', ['id' => $this->youtube_id]);
+        }
+        return $this->preview_url ?? $this->file_path ?? '';
+    }
+
+    /**
+     * URL gambar cover.
+     * Prioritas: artwork_url (iTunes) → album_art (lokal)
+     */
+    public function getCoverUrlAttribute(): string
+    {
+        return $this->artwork_url ?? $this->album_art ?? '';
+    }
 
     public function isLikedBy($user)
     {

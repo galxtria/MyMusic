@@ -23,6 +23,7 @@ class HomeController extends Controller
      */
     public function index()
     {
-        return view('home');
+        $trendingSongs = \App\Models\Song::inRandomOrder()->limit(12)->get();
+        return view('home', compact('trendingSongs'));
     }
 }

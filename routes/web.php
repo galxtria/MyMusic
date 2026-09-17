@@ -6,6 +6,7 @@ use App\Http\Controllers\SongController;
 use App\Http\Controllers\AdminSongController;
 use App\Http\Controllers\FavoriteController; 
 use App\Http\Controllers\Admin\AdminUserController; 
+use App\Http\Controllers\iTunesController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,6 +25,7 @@ Route::middleware(['auth'])->group(function () {
     
     // Core User Routes
     Route::get('/home', [SongController::class, 'index'])->name('home');
+    Route::get('/api/collection', [SongController::class, 'collectionJson'])->name('api.collection');
     Route::get('/search', [SongController::class, 'search'])->name('search');
     Route::get('/library', [SongController::class, 'library'])->name('library');
     Route::get('/create', [SongController::class, 'create'])->name('create');
@@ -54,6 +56,16 @@ Route::middleware(['auth'])->group(function () {
 
     // Artis
     Route::get('/artist/{name}', [SongController::class, 'artist'])->name('artist.show'); 
+
+    // --- YouTube API Routes ---
+    Route::get('/api/youtube/search', [\App\Http\Controllers\YouTubeController::class, 'search'])->name('youtube.search');
+    Route::post('/api/youtube/add-to-library', [\App\Http\Controllers\YouTubeController::class, 'addToLibrary'])->name('youtube.add');
+    Route::get('/api/youtube/mood/{mood}', [\App\Http\Controllers\YouTubeController::class, 'moodSearch'])->name('youtube.mood');
+    Route::get('/api/stream-audio', [\App\Http\Controllers\YouTubeController::class, 'streamAudio'])->name('youtube.streamAudio');
+
+    // --- iTunes API Routes ---
+    Route::get('/api/itunes/search', [\App\Http\Controllers\iTunesController::class, 'search'])->name('itunes.search');
+    Route::get('/api/itunes/mood/{mood}', [\App\Http\Controllers\iTunesController::class, 'moodSearch'])->name('itunes.mood');
 });
 
 // --- GROUP ROUTE ADMIN ---

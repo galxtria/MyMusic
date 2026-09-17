@@ -600,7 +600,7 @@ class SongSeeder extends Seeder
                 'artist' => '.Feast',
                 'album_art' => '/images/feast_abdilarainsani.jpg',
                 'artist_image' => '/images/artist/feast.jpg',
-                'file_path' => '/music/feast_bintangmasaaksi.mp3',
+                'file_path' => 'feast_bintangmasaaksi.mp3',
                 'duration' => '3:50',
                 'lyrics' => "[00:45.30] Bawa temanmu yang centang biru
                 [00:49.24] Lawyer sponsor partaimu mana aku tak takut

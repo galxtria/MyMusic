@@ -6,7 +6,7 @@
     /* --- SCOPED VARIABLES --- */
     .lrc-scope {
         --c-deep: #050b14;
-        --c-accent: #8b5cf6; 
+        --c-accent: #3b82f6; 
         --glass-border: rgba(255, 255, 255, 0.15);
         --glass-surface: rgba(15, 23, 42, 0.8);
     }
@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function activateUI() {
         stampBtn.disabled = false;
         diskIcon.classList.add('fa-spin');
-        diskIcon.style.color = '#8b5cf6';
+        diskIcon.style.color = '#3b82f6';
     }
 
     // 3. Stamp Logic

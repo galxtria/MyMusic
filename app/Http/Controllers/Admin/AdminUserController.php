@@ -10,10 +10,21 @@ use Illuminate\Support\Facades\Hash;
 class AdminUserController extends Controller
 {
     // 1. Tampilkan List User
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->input('search');
+
         // Ambil user selain yang sedang login (biar admin gak hapus diri sendiri)
-        $users = User::where('id', '!=', auth()->id())->latest()->paginate(10);
+        $users = User::where('id', '!=', auth()->id())
+            ->when($search, function ($query, $search) {
+                return $query->where(function ($q) use ($search) {
+                    $q->where('name', 'LIKE', "%{$search}%")
+                      ->orWhere('email', 'LIKE', "%{$search}%");
+                });
+            })
+            ->latest()
+            ->paginate(10)
+            ->withQueryString();
         return view('admin.users.index', compact('users'));
     }
 

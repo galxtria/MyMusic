@@ -61,8 +61,14 @@ class SongController extends Controller
     public function index() {
     // Mengambil lagu dengan pagination (15 lagu per halaman)
         $songs = Song::latest()->paginate(15); 
+        $trendingSongs = Song::inRandomOrder()->limit(12)->get();
         
-        return view('home', compact('songs'));
+        return view('home', compact('songs', 'trendingSongs'));
+    }
+
+    // 1b. COLLECTION GRID (JSON — navigasi halaman tanpa reload)
+    public function collectionJson() {
+        return response()->json(Song::latest()->paginate(15));
     }
 
     // 2. SEARCH

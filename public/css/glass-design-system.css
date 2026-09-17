@@ -1,0 +1,202 @@
+/* ============================================================
+   MYMUSIC — GLASSMORPHISM DARK BLUE DESIGN SYSTEM v2
+   Satu sumber kebenaran untuk seluruh halaman.
+   Cara pakai: tambahkan class .glass, .glass-strong, .glass-btn,
+   .glass-input, .glass-chip, .section-title-glow, dll.
+   Palette: deep navy #040B18 sebagai base, aksen biru #3B82F6
+   + sky #38BDF8 agar tetap sesuai warna saat ini.
+   ============================================================ */
+
+:root {
+  /* --- Base --- */
+  --mm-bg-0: #040b18;
+  --mm-bg-1: #060f22;
+  --mm-bg-2: #0a1730;
+  --mm-bg-elevated: rgba(10, 23, 48, 0.72);
+
+  /* --- Accent (tetap biru seperti sekarang) --- */
+  --mm-accent: #3b82f6;
+  --mm-accent-2: #38bdf8;
+  --mm-accent-3: #1d4ed8;
+  --mm-accent-soft: rgba(59, 130, 246, 0.14);
+  --mm-accent-line: rgba(59, 130, 246, 0.28);
+  --mm-accent-glow: rgba(59, 130, 246, 0.45);
+
+  /* --- Glass --- */
+  --mm-glass: rgba(148, 184, 255, 0.06);
+  --mm-glass-strong: rgba(148, 184, 255, 0.1);
+  --mm-glass-border: rgba(148, 184, 255, 0.14);
+  --mm-glass-border-strong: rgba(148, 184, 255, 0.26);
+  --mm-glass-highlight: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 40%);
+
+  /* --- Text --- */
+  --mm-text: #f1f6ff;
+  --mm-text-dim: #a9bcd8;
+  --mm-text-faint: #64748f;
+
+  /* --- Shape & shadow --- */
+  --mm-r-sm: 12px;
+  --mm-r-md: 18px;
+  --mm-r-lg: 26px;
+  --mm-r-xl: 34px;
+  --mm-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  --mm-shadow-accent: 0 12px 34px rgba(59, 130, 246, 0.35);
+
+  /* --- Motion --- */
+  --mm-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* --- Aurora background global (cukup tambah <div class="mm-aurora">) --- */
+.mm-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(600px 420px at 12% 8%, rgba(56, 189, 248, 0.16), transparent 65%),
+    radial-gradient(760px 520px at 88% 12%, rgba(59, 130, 246, 0.2), transparent 65%),
+    radial-gradient(700px 600px at 50% 110%, rgba(29, 78, 216, 0.22), transparent 65%),
+    var(--mm-bg-0);
+}
+.mm-aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(148, 184, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 184, 255, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(70% 60% at 50% 30%, black, transparent 75%);
+  opacity: 0.6;
+}
+
+/* --- Glass primitives --- */
+.glass {
+  background: var(--mm-glass);
+  border: 1px solid var(--mm-glass-border);
+  backdrop-filter: blur(22px) saturate(1.3);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), var(--mm-shadow);
+}
+.glass-strong {
+  background: var(--mm-bg-elevated);
+  border: 1px solid var(--mm-glass-border-strong);
+  backdrop-filter: blur(30px) saturate(1.4);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), var(--mm-shadow);
+}
+.glass-top-highlight { position: relative; overflow: hidden; }
+.glass-top-highlight::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(148, 197, 255, 0.7), transparent);
+}
+
+/* --- Buttons --- */
+.glass-btn-primary {
+  background: linear-gradient(135deg, var(--mm-accent-2), var(--mm-accent) 55%, var(--mm-accent-3));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  box-shadow: var(--mm-shadow-accent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 0.35s var(--mm-ease), box-shadow 0.35s var(--mm-ease), filter 0.35s;
+}
+.glass-btn-primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  filter: brightness(1.08);
+  box-shadow: 0 18px 48px rgba(59, 130, 246, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+.glass-btn-ghost {
+  background: var(--mm-glass);
+  border: 1px solid var(--mm-glass-border);
+  color: var(--mm-text);
+  backdrop-filter: blur(16px);
+  transition: all 0.3s var(--mm-ease);
+}
+.glass-btn-ghost:hover {
+  background: var(--mm-accent-soft);
+  border-color: var(--mm-accent-line);
+  transform: translateY(-2px);
+  color: #fff;
+}
+
+/* --- Inputs / chips --- */
+.glass-input {
+  background: rgba(3, 10, 26, 0.6);
+  border: 1px solid var(--mm-glass-border);
+  color: var(--mm-text);
+  backdrop-filter: blur(14px);
+  transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+}
+.glass-input:focus {
+  border-color: var(--mm-accent);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.22);
+  background: rgba(6, 16, 36, 0.85);
+  outline: none;
+}
+.glass-chip {
+  background: var(--mm-glass);
+  border: 1px solid var(--mm-glass-border);
+  color: var(--mm-text-dim);
+  backdrop-filter: blur(14px);
+  transition: all 0.3s var(--mm-ease);
+}
+.glass-chip:hover,
+.glass-chip.active {
+  background: linear-gradient(135deg, var(--mm-accent), var(--mm-accent-3));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: var(--mm-shadow-accent);
+  transform: translateY(-2px);
+}
+
+/* --- Cards --- */
+.glass-card-hover { transition: transform 0.45s var(--mm-ease), box-shadow 0.45s, border-color 0.45s, background 0.45s; }
+.glass-card-hover:hover {
+  transform: translateY(-8px);
+  border-color: var(--mm-accent-line);
+  box-shadow: var(--mm-shadow), 0 0 32px rgba(59, 130, 246, 0.22);
+}
+.shine { position: relative; overflow: hidden; }
+.shine::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  transform: skewX(-18deg);
+  transition: left 0.6s var(--mm-ease);
+  pointer-events: none;
+}
+.shine:hover::after { left: 140%; }
+
+/* --- Typography helpers --- */
+.text-gradient-blue {
+  background: linear-gradient(120deg, #fff 10%, #bae6fd 45%, var(--mm-accent-2) 70%, var(--mm-accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.section-title-glow {
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  color: var(--mm-text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* --- Animations --- */
+@keyframes mm-rise {
+  from { opacity: 0; transform: translateY(26px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes mm-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+.mm-enter { animation: mm-rise 0.7s var(--mm-ease) both; }
