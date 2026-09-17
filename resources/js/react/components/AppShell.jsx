@@ -172,11 +172,11 @@ function PlayerBar() {
     <div className="mm-player" style={hidden ? { display: 'none' } : undefined}>
       {audioEl}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '24%', minWidth: 0 }}>
+      <div className="mm-pb-left">
         {current?.cover
           ? <img src={current.cover} className="mm-player-cover" alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           : <div className="mm-player-cover" style={{ display: 'grid', placeItems: 'center', background: 'var(--mm-panel-2)' }}><Disc3 size={22} style={{ color: 'var(--mm-faint)' }} /></div>}
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 800, fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {current ? current.title : 'Not playing'}
           </div>
@@ -184,30 +184,37 @@ function PlayerBar() {
             {current ? current.artist : 'Pick a song to start'}
           </div>
         </div>
+        <span className="mm-only-mobile">{current && <LikeButton songId={current.id} size={17} />}</span>
+        <button className="mm-icon-btn mm-only-mobile-btn" onClick={() => current && p.setLyricsOpen(true)} title="Lyrics" style={{ width: 34, height: 34 }}><Mic size={15} /></button>
+        <button className="mm-play-fab mm-only-mobile-btn" onClick={p.toggle} title="Play / Pause" disabled={!current}>
+          {p.isPlaying ? <Pause size={17} /> : <Play size={17} style={{ marginLeft: 2 }} />}
+        </button>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 18, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+      <div className="mm-pb-center">
+        <div className="mm-pb-transport">
           <button onClick={p.prev} title="Previous" style={ghostBtn}><SkipBack size={17} /></button>
           <button className="mm-play-fab" onClick={p.toggle} title="Play / Pause" disabled={!current} style={!current ? { opacity: 0.45 } : undefined}>
             {p.isPlaying ? <Pause size={18} /> : <Play size={18} style={{ marginLeft: 2 }} />}
           </button>
           <button onClick={p.next} title="Next" style={ghostBtn}><SkipForward size={17} /></button>
         </div>
-        <span style={timeStyle}>{formatTime(p.currentTime)}</span>
-        <input
-          type="range" min={0} max={1000} value={Math.round(p.progress)} className="mm-range" style={{ flex: 1 }}
-          onChange={(e) => {
-            const el = p.audioRef.current;
-            const v = Number(e.target.value);
-            p.setProgress(v);
-            if (el && isFinite(el.duration)) el.currentTime = (v / 1000) * el.duration;
-          }}
-        />
-        <span style={timeStyle}>{formatTime(p.duration)}</span>
+        <div className="mm-pb-progress">
+          <span style={timeStyle}>{formatTime(p.currentTime)}</span>
+          <input
+            type="range" min={0} max={1000} value={Math.round(p.progress)} className="mm-range" style={{ flex: 1 }}
+            onChange={(e) => {
+              const el = p.audioRef.current;
+              const v = Number(e.target.value);
+              p.setProgress(v);
+              if (el && isFinite(el.duration)) el.currentTime = (v / 1000) * el.duration;
+            }}
+          />
+          <span style={timeStyle}>{formatTime(p.duration)}</span>
+        </div>
       </div>
 
-      <div className="mm-hide-mobile" style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+      <div className="mm-pb-right mm-hide-mobile">
         {current && <LikeButton songId={current.id} size={17} />}
         <button onClick={() => p.setShuffle((v) => !v)} title="Shuffle" style={ghostBtn}>
           <Shuffle size={16} color={p.shuffle ? '#fff' : undefined} opacity={p.shuffle ? 1 : 0.55} />
