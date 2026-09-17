@@ -166,11 +166,4 @@ class AdminSongController extends Controller
         
         return redirect()->route('admin.songs.index')->with('success', 'Lagu berhasil dihapus.');
     }
-
-    public function lrcMaker()
-    {
-        // Ambil semua lagu untuk dropdown pilihan
-        $songs = Song::orderBy('title', 'asc')->get();
-        return view('admin.tools.lrc-maker', compact('songs'));
-    }
 }

@@ -51,16 +51,26 @@ class SongController extends Controller
             ], 404);
         }
 
+        // MIME type mengikuti ekstensi file (mp3, m4a hasil import, wav, ogg).
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = match ($ext) {
+            'm4a', 'aac' => 'audio/mp4',
+            'wav' => 'audio/wav',
+            'ogg', 'oga' => 'audio/ogg',
+            'flac' => 'audio/flac',
+            default => 'audio/mpeg',
+        };
+
         return response()->file($path, [
             'Accept-Ranges' => 'bytes',
-            'Content-Type' => 'audio/mpeg',
+            'Content-Type' => $mime,
         ]);
     }
 
     // 1. HOME
     public function index() {
-    // Mengambil lagu dengan pagination (15 lagu per halaman)
-        $songs = Song::latest()->paginate(15); 
+    // Mengambil lagu dengan pagination (16 lagu per halaman)
+        $songs = Song::latest()->paginate(16); 
         $trendingSongs = Song::inRandomOrder()->limit(12)->get();
         
         return view('home', compact('songs', 'trendingSongs'));
@@ -68,7 +78,7 @@ class SongController extends Controller
 
     // 1b. COLLECTION GRID (JSON — navigasi halaman tanpa reload)
     public function collectionJson() {
-        return response()->json(Song::latest()->paginate(15));
+        return response()->json(Song::latest()->paginate(16));
     }
 
     // 2. SEARCH

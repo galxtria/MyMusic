@@ -14,6 +14,7 @@ import PlaylistDetail from './pages/PlaylistDetail';
 import CreatePlaylist, { EditPlaylist } from './pages/PlaylistForm';
 import { Login, Register } from './pages/Auth';
 import { AdminSongs, AdminSongForm, AdminUsers } from './pages/Admin';
+import AdminImport from './pages/AdminImport';
 
 const standalone = new Set(['welcome', 'login', 'register']);
 
@@ -46,6 +47,7 @@ function mount() {
       case 'admin.songs.create': return <AdminSongForm {...props} />;
       case 'admin.songs.edit': return <AdminSongForm {...props} />;
       case 'admin.users.index': return <AdminUsers {...props} />;
+      case 'admin.tools.import': return <AdminImport {...props} />;
       default: return <Home {...props} />;
     }
   };

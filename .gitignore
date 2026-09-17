@@ -25,6 +25,7 @@ Thumbs.db
 
 # Local-only runtime & dev snapshots (not for git)
 yt-dlp.exe
+cookies.txt
 piped_test.json
 deezer_test.json
 yt_search.html

@@ -84,6 +84,7 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->name('admin.')->group(fun
     Route::delete('users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
     Route::patch('users/{user}/role', [AdminUserController::class, 'toggleRole'])->name('users.toggle-role');
     
-    // Tool LRC Maker (Nama rutenya menjadi admin.tools.lrc-maker)
-    Route::get('tools/lrc-maker', [AdminSongController::class, 'lrcMaker'])->name('tools.lrc-maker');                
+    // Import lagu dari API ke library lokal (audio diunduh ke server)
+    Route::get('tools/import', [\App\Http\Controllers\YouTubeController::class, 'importForm'])->name('tools.import');
+    Route::post('tools/import', [\App\Http\Controllers\YouTubeController::class, 'importTrack'])->name('tools.import.store');                
 });

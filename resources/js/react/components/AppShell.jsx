@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ChevronDown, ChevronRight, Disc3, FolderPlus, Heart, House, ListMusic, LogOut, Menu,
-  Mic, Pause, Play, Repeat, Search as SearchIcon, Settings, Shuffle, SkipBack, SkipForward, Volume2, WandSparkles, X,
+  ChevronDown, ChevronRight, Disc3, Download, FolderPlus, Heart, House, ListMusic, LogOut, Menu,
+  Mic, Pause, Play, Repeat, Settings, Shuffle, SkipBack, SkipForward, Volume2, X,
 } from 'lucide-react';
 import { addSongToPlaylist, formatTime, toggleFavorite } from '../lib/api';
 import { usePlayer } from '../lib/player';
@@ -65,7 +65,7 @@ function Sidebar({ page, isAdmin, playlists, open, onClose }) {
           <>
             <div className="mm-nav-label">ADMIN</div>
             <NavItem href="/admin/songs" active={page === 'admin'} icon={Settings} label="Manage Songs" />
-            <NavItem href="/admin/tools/lrc-maker" active={false} icon={WandSparkles} label="LRC Maker" />
+            <NavItem href="/admin/tools/import" active={page === 'admin-import'} icon={Download} label="Import Music" />
           </>
         )}
 
@@ -96,18 +96,11 @@ function LayoutGridIcon(props) {
 
 function TopBar({ user, isAdmin, onMenu }) {
   const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
   return (
     <div className="mm-topbar">
       <button className="mm-icon-btn" onClick={onMenu} id="mm-menu-btn" title="Open menu">
         <Menu size={18} />
       </button>
-      <div className="mm-topbar-search mm-hide-mobile">
-        <form action="/search" method="GET" className="mm-search-bar">
-          <input name="q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search for a song" autoComplete="off" />
-          <button type="submit" className="mm-search-btn" title="Search"><SearchIcon size={17} /></button>
-        </form>
-      </div>
       <div className="mm-user-cluster">
         {user ? (
           <>

@@ -15,7 +15,7 @@
 
     <div class="sidebar-section-label">TOOLS</div>
 
-    <a href="{{ route('admin.tools.lrc-maker') }}" class="nav-link ajax-link {{ request()->routeIs('admin.tools.lrc-maker') ? 'active' : '' }}">
-        <i class="fas fa-wand-magic-sparkles"></i> <span>LRC Maker</span>
+    <a href="{{ route('admin.tools.import') }}" class="nav-link ajax-link {{ request()->routeIs('admin.tools.import') ? 'active' : '' }}">
+        <i class="fas fa-cloud-arrow-down"></i> <span>Import Music</span>
     </a>
 </div>

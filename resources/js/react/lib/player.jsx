@@ -112,14 +112,20 @@ export function PlayerProvider({ children, initialFavorites = [] }) {
     });
   }, []);
 
+  // Ganti identitas item antrean (mis. lagu online yt-xxx -> id DB numerik
+  // setelah dibuatkan stub) tanpa mengganggu pemutaran.
+  const relinkQueueItem = useCallback((oldId, patch) => {
+    setQueue((q) => q.map((s) => (String(s.id) === String(oldId) ? { ...s, ...patch } : s)));
+  }, []);
+
   const value = useMemo(() => ({
     audioRef, queue, index, current, isPlaying, setIsPlaying,
     shuffle, setShuffle, repeat, setRepeat,
     progress, setProgress, duration, setDuration, currentTime, setCurrentTime,
     volume, setVolume, toast, showToast, lyricsOpen, setLyricsOpen,
     lyrics, lyricsLoading, playlistModalSong, setPlaylistModalSong,
-    likedIds, isFavorite, markLiked, loadQueue, playAt, next, prev, toggle,
-  }), [queue, index, current, isPlaying, shuffle, repeat, progress, duration, currentTime, volume, toast, showToast, lyricsOpen, lyrics, lyricsLoading, playlistModalSong, likedIds, isFavorite, markLiked, loadQueue, playAt, next, prev, toggle]);
+    likedIds, isFavorite, markLiked, relinkQueueItem, loadQueue, playAt, next, prev, toggle,
+  }), [queue, index, current, isPlaying, shuffle, repeat, progress, duration, currentTime, volume, toast, showToast, lyricsOpen, lyrics, lyricsLoading, playlistModalSong, likedIds, isFavorite, markLiked, relinkQueueItem, loadQueue, playAt, next, prev, toggle]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

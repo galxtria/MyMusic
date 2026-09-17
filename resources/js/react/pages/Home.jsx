@@ -1,21 +1,16 @@
-import { useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, LoaderCircle, Play, Plus } from 'lucide-react';
-import { addYouTubeToLibrary, moodOnline, normalizeSong } from '../lib/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Globe, Heart, LoaderCircle, Play, Plus } from 'lucide-react';
+import { addYouTubeToLibrary, normalizeSong, toggleFavorite } from '../lib/api';
 import { usePlayer } from '../lib/player';
 import { EmptyState, LoadingRow, SongCard, ErrorRow } from '../components/ui';
 
-function onlineToSong(t) {
-  const idPart = (t.url || '').split('?v=')[1] || t.url || t.id;
-  return normalizeSong({
-    id: `yt-${idPart}`,
-    title: t.title,
-    artist: t.uploaderName,
-    cover: t.thumbnail,
-    src: `/api/stream-audio?title=${encodeURIComponent(t.title || '')}&artist=${encodeURIComponent(t.uploaderName || '')}`,
-    lyrics: '',
-    duration: '',
-  });
-}
+// Mood dipetakan ke genre lokal (case-insensitive).
+const MOOD_GENRES = {
+  fokus: ['lofi', 'lo-fi', 'ambient', 'acoustic', 'classical', 'jazz'],
+  energetik: ['electronic', 'pop', 'rock', 'hip hop', 'k-pop', 'metal', 'phonk', 'dangdut', 'alternative rock', 'indie rock', 'grunge', 'edm'],
+  santai: ['acoustic', 'jazz', 'soul', 'r&b', 'reggae', 'folk', 'city pop', 'indie', 'pop'],
+  sedih: ['blues', 'soul', 'ambient', 'acoustic', 'folk', 'indie'],
+};
 
 const CATEGORIES = [
   { label: 'All', mood: null },
@@ -83,10 +78,89 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
   const p = usePlayer();
   const [mood, setMood] = useState(null);
   const [moodTracks, setMoodTracks] = useState([]);
-  const [moodState, setMoodState] = useState('idle');
   const heroRef = useRef(null);
   const popularRef = useRef(null);
+  const onlineRef = useRef(null);
   const catRef = useRef(null);
+  // Metadata API mentah per videoId (normalizeSong membuang field tak dikenal
+  // saat masuk antrean, jadi simpan terpisah untuk auto-stub like/simpan).
+  const rawByVid = useRef({});
+
+  // ===== Trending Online: lagu API langsung tampil + bisa di-play =====
+  const [onlineTrending, setOnlineTrending] = useState([]);
+  const [onlineState, setOnlineState] = useState('idle');
+
+  const onlineToSong = (t) => {
+    const vid = (t.url || '').split('?v=')[1] || t.url || '';
+    const s = normalizeSong({
+      id: `yt-${vid}`,
+      title: t.title,
+      artist: t.uploaderName,
+      cover: t.thumbnail,
+      src: `/api/stream-audio?id=${encodeURIComponent(vid)}`,
+      lyrics: '',
+      duration: '',
+    });
+    s.vid = vid;
+    return s;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setOnlineState('loading');
+    fetch('/api/youtube/mood/popular', { headers: { Accept: 'application/json' } })
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (cancelled) return;
+        if (!ok) throw new Error('bad response');
+        const list = (d.results || []).map(onlineToSong);
+        rawByVid.current = {};
+        (d.results || []).forEach((t) => {
+          const vid = (t.url || '').split('?v=')[1] || t.url || '';
+          if (vid) rawByVid.current[vid] = t;
+        });
+        setOnlineTrending(list);
+        setOnlineState('done');
+      })
+      .catch(() => { if (!cancelled) setOnlineState('error'); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Pastikan lagu online punya baris DB (stub metadata) agar bisa di-like / disimpan.
+  const ensureOnlineStub = async (t) => {
+    const raw = rawByVid.current[t.vid] || t.raw;
+    if (!raw) throw new Error('no metadata');
+    const data = await addYouTubeToLibrary(raw);
+    const songId = data.song?.id;
+    if (!songId) throw new Error('no id');
+    return songId;
+  };
+
+  const likeOnline = async (t) => {
+    try {
+      const songId = await ensureOnlineStub(t);
+      const fav = await toggleFavorite(songId);
+      const liked = fav.status === 'liked';
+      p.markLiked(songId, liked);
+      p.relinkQueueItem(t.id, { id: songId });
+      setOnlineTrending((list) => list.map((x) => (x.vid === t.vid ? { ...x, id: songId } : x)));
+      p.showToast(liked ? 'Saved to your library' : 'Removed from your library');
+    } catch {
+      p.showToast('Could not save track');
+    }
+  };
+
+  const saveOnline = async (t) => {
+    try {
+      const songId = await ensureOnlineStub(t);
+      p.relinkQueueItem(t.id, { id: songId });
+      setOnlineTrending((list) => list.map((x) => (x.vid === t.vid ? { ...x, id: songId } : x)));
+      p.setPlaylistModalSong(songId);
+    } catch {
+      p.showToast('Could not save track');
+    }
+  };
 
   const localSongs = useMemo(() => songs.map(normalizeSong), [songs]);
   const trendingSongs = useMemo(() => trending.map(normalizeSong), [trending]);
@@ -119,23 +193,24 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
 
   const playList = (list, i) => p.loadQueue(list, i);
 
-  const pickMood = async (key) => {
-    if (!key) {
-      setMood(null); setMoodTracks([]); setMoodState('idle');
+  const pickMood = (key) => {
+    // Filter koleksi lokal berdasarkan genre — tanpa API, tanpa reload.
+    if (!key || mood === key) {
+      setMood(null);
+      setMoodTracks([]);
       return;
     }
-    if (mood === key) {
-      setMood(null); setMoodTracks([]); setMoodState('idle');
-      return;
-    }
-    setMood(key); setMoodState('loading');
-    try {
-      const data = await moodOnline(key);
-      setMoodTracks((data.results || []).map(onlineToSong));
-      setMoodState('done');
-    } catch {
-      setMoodState('error');
-    }
+    setMood(key);
+    const genres = MOOD_GENRES[key] || [];
+    const pool = [...localSongs, ...trendingSongs];
+    const seen = new Set();
+    const matched = pool.filter((s) => {
+      const g = (s.genre || '').toLowerCase();
+      if (!genres.includes(g) || seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+    setMoodTracks(matched.slice(0, 15));
   };
 
   return (
@@ -190,34 +265,18 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
         })}
       </div>
 
-      {/* ===== mood results ===== */}
-      {moodState === 'loading' && <LoadingRow text="Finding the perfect tracks..." />}
-      {moodState === 'error' && <ErrorRow />}
-      {moodState === 'done' && (
+      {/* ===== mood results (koleksi lokal) ===== */}
+      {mood && (
         moodTracks.length === 0
-          ? <EmptyState title="No tracks for this mood" message="Try another vibe in a moment." />
+          ? <EmptyState title="No tracks for this mood" message="Belum ada lagu lokal dengan vibe ini. Minta admin mengimpor genre yang cocok." />
           : (
             <>
               <div className="mm-section"><span>For your mood</span></div>
               <div className="mm-grid-songs">
                 {moodTracks.map((t, i) => (
                   <SongCard
-                    key={t.id + i} song={t} onPlay={() => playList(moodTracks, i)}
-                    action={(
-                      <button
-                        className="mm-icon-btn" style={{ width: 30, height: 30 }}
-                        title="Add to library"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            await addYouTubeToLibrary({ url: t.raw?.url ?? t.id, title: t.title, uploaderName: t.artist, thumbnail: t.cover, duration: 0 });
-                            p.showToast('Added to your library');
-                          } catch { p.showToast('Could not add to library'); }
-                        }}
-                      >
-                        <Plus size={14} />
-                      </button>
-                    )}
+                    key={t.id} song={t} onPlay={() => playList(moodTracks, i)}
+                    action={<button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(t.id); }} title="Save to playlist"><Plus size={14} /></button>}
                   />
                 ))}
               </div>
@@ -243,26 +302,42 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
         </>
       )}
 
-      {/* ===== artists ===== */}
-      {artists.length > 0 && (
-        <>
-          <div className="mm-section"><span>Top artists</span></div>
-          <div className="rt-row">
-            {artists.map((a) => (
-              <a key={a.artist} href={`/artist/${encodeURIComponent(a.artist)}`} style={{ textDecoration: 'none', textAlign: 'center', flex: '0 0 auto' }}>
-                <img
-                  src={a.cover || a.artwork_url || a.album_art || '/images/default_artist.jpg'}
-                  alt={a.artist}
-                  style={{ width: 92, height: 92, borderRadius: '50%', objectFit: 'cover', display: 'block', margin: '0 auto 10px', flexShrink: 0 }}
-                  onError={(e) => { e.currentTarget.src = '/images/default_artist.jpg'; }}
-                />
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, maxWidth: 100, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {a.artist}
-                </div>
-              </a>
-            ))}
-          </div>
-        </>
+      {/* ===== trending online (langsung dari API, tanpa import) ===== */}
+      <div className="mm-section mm-enter">
+        <Globe size={19} style={{ color: 'var(--mm-teal)' }} />
+        <span>Trending Online</span>
+        <RowChevrons targetRef={onlineRef} />
+      </div>
+      {onlineState === 'loading' && <LoadingRow text="Fetching trending tracks..." />}
+      {onlineState === 'error' && <ErrorRow text="Online source unreachable right now." />}
+      {onlineState === 'done' && onlineTrending.length === 0 && (
+        <EmptyState title="Nothing trending" message="Try again in a moment." />
+      )}
+      {onlineState === 'done' && onlineTrending.length > 0 && (
+        <div className="rt-row mm-enter" ref={onlineRef}>
+          {onlineTrending.map((s, i) => {
+            const liked = p.likedIds.has(String(s.id));
+            return (
+              <SongCard
+                key={`${s.id}-${i}`} song={s} onPlay={() => playList(onlineTrending, i)}
+                action={(
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); likeOnline(s); }}
+                      title="Save to library"
+                      style={{ background: 'none', border: 0, cursor: 'pointer', padding: 4 }}
+                    >
+                      <Heart size={15} color={liked ? '#3b82f6' : '#64748f'} fill={liked ? '#3b82f6' : 'none'} />
+                    </button>
+                    <button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); saveOnline(s); }} title="Save to playlist">
+                      <Plus size={14} />
+                    </button>
+                  </span>
+                )}
+              />
+            );
+          })}
+        </div>
       )}
 
       {/* ===== collection (paginated in place) ===== */}
