@@ -127,12 +127,12 @@ class YouTubeController extends Controller
 
         $q = $keywords[strtolower($mood)] ?? 'popular music';
 
-        // Mode trending: gabung 2 query lagu Indonesia (filter music_songs
+        // Mode trending: gabung 2 query hits dunia (filter music_songs
         // mengembalikan track per track, bukan kompilasi/radio live).
         $searches = strtolower($mood) === 'popular'
             ? [
-                ['q' => 'pop indonesia terbaru', 'filter' => 'music_songs'],
-                ['q' => 'lagu hits indonesia 2026', 'filter' => 'music_songs'],
+                ['q' => 'global hits popular songs', 'filter' => 'music_songs'],
+                ['q' => 'top songs worldwide 2026', 'filter' => 'music_songs'],
             ]
             : [['q' => $q, 'filter' => 'all']];
 

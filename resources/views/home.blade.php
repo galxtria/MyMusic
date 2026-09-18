@@ -6,10 +6,13 @@
 @php
 $me = auth()->user();
 $props = [
-    'user' => $me ? ['name' => $me->name, 'role' => $me->role] : null,
+    'user' => $me ? ['id' => $me->id, 'name' => $me->name, 'email' => $me->email, 'role' => $me->role] : null,
     'isAdmin' => $me && $me->role === 'admin',
     'songs' => $songs->getCollection()->values(),
     'trending' => isset($trendingSongs) ? $trendingSongs->values() : [],
+    'mostPlayed' => isset($mostPlayed) ? $mostPlayed->values() : [],
+    'recentlyPlayed' => isset($recentlyPlayed) ? $recentlyPlayed->values() : [],
+    'myCollection' => isset($myCollection) ? $myCollection->values() : [],
     'artists' => $songs->getCollection()->unique('artist')->take(10)->map(function ($s) {
         return ['artist' => $s->artist, 'artwork_url' => $s->artwork_url, 'album_art' => $s->album_art, 'artist_image' => $s->artist_image];
     })->values(),

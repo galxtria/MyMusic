@@ -6,7 +6,7 @@
 @php
 $me = auth()->user();
 $props = [
-    'user' => $me ? ['name' => $me->name, 'role' => $me->role] : null,
+    'user' => $me ? ['id' => $me->id, 'name' => $me->name, 'email' => $me->email, 'role' => $me->role] : null,
     'isAdmin' => true,
     'songs' => $songs->getCollection()->values()->map(function ($s) {
         return array_merge($s->toArray(), ['uploaded' => $s->created_at ? $s->created_at->diffForHumans() : '']);

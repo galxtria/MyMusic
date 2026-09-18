@@ -6,7 +6,7 @@
 @php
 $me = auth()->user();
 $props = [
-    'user' => $me ? ['name' => $me->name, 'role' => $me->role] : null,
+    'user' => $me ? ['id' => $me->id, 'name' => $me->name, 'email' => $me->email, 'role' => $me->role] : null,
     'isAdmin' => $me && $me->role === 'admin',
     'playlist' => ['id' => $playlist->id, 'name' => $playlist->name, 'cover_path' => $playlist->cover_path],
     'errors' => $errors->toArray(),

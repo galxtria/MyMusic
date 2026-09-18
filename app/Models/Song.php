@@ -23,21 +23,13 @@ class Song extends Model
         'artwork_url',
         'itunes_artist_id',
         'youtube_id',
+        'play_count',
+        'last_played_at',
     ];
 
-    /**
-     * URL audio yang bisa diputar.
-     * Prioritas: youtube streaming (fetch API on demand) -> preview_url -> file_path
-     * Note: Untuk youtube, stream URL akan digenerate dinamis via Controller. 
-     * Di sini kita kembalikan route helper khusus.
-     */
-    public function getPlayableUrlAttribute(): string
-    {
-        if ($this->youtube_id) {
-            return route('youtube.stream', ['id' => $this->youtube_id]);
-        }
-        return $this->preview_url ?? $this->file_path ?? '';
-    }
+    protected $casts = [
+        'last_played_at' => 'datetime',
+    ];
 
     /**
      * URL gambar cover.

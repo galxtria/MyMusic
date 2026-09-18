@@ -60,7 +60,8 @@ img { object-fit: cover; }
   display: flex; flex-direction: column; gap: 14px;
 }
 .mm-body { display: flex; gap: 14px; flex: 1; align-items: flex-start; }
-.mm-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mm-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-self: stretch; }
+.mm-col > .mm-player { margin-top: auto; }
 
 /* ================= sidebar ================= */
 .mm-sidebar {

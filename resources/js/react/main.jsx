@@ -53,9 +53,9 @@ function mount() {
   };
 
   const app = standalone.has(page) ? (
-    <PlayerProvider initialFavorites={props.favoriteIds || []}>{renderPage()}</PlayerProvider>
+    <PlayerProvider initialFavorites={props.favoriteIds || []} user={props.user || null}>{renderPage()}</PlayerProvider>
   ) : (
-    <PlayerProvider initialFavorites={props.favoriteIds || []}>
+    <PlayerProvider initialFavorites={props.favoriteIds || []} user={props.user || null}>
       <AppShell page={props.shellPage || page} user={props.user} isAdmin={props.isAdmin} playlists={props.playlists}>
         {renderPage()}
       </AppShell>

@@ -5,7 +5,7 @@
 @section('react-props')
 @php
 $props = [
-    'user' => auth()->check() ? ['name' => auth()->user()->name, 'role' => auth()->user()->role] : null,
+    'user' => auth()->check() ? ['id' => auth()->user()->id, 'name' => auth()->user()->name, 'email' => auth()->user()->email, 'role' => auth()->user()->role] : null,
 ];
 @endphp
 @json($props)

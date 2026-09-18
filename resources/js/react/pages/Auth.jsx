@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { Disc3, Lock, LogIn, Mail, ShieldCheck, User, UserPlus } from 'lucide-react';
+import { clearPersistedPlayerState } from '../lib/player';
 
 function Shell({ title, subtitle, children, footer }) {
   return (
@@ -21,6 +23,8 @@ function Shell({ title, subtitle, children, footer }) {
 
 export function Login({ errors = {} }) {
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+  // Buang sisa antrean user sebelumnya agar login baru tidak auto-start lagu lama.
+  useEffect(() => { clearPersistedPlayerState(); }, []);
   return (
     <Shell title="Welcome back" subtitle="Log in to continue your session." footer={<>No account yet? <a href="/register" style={{ color: 'var(--mm-sky)', fontWeight: 700 }}>Sign up</a></>}>
       <form action="/login" method="POST">
@@ -43,6 +47,7 @@ export function Login({ errors = {} }) {
 
 export function Register({ errors = {} }) {
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+  useEffect(() => { clearPersistedPlayerState(); }, []);
   return (
     <Shell title="Create your account" subtitle="Start your music journey today." footer={<>Already have an account? <a href="/login" style={{ color: 'var(--mm-sky)', fontWeight: 700 }}>Log in</a></>}>
       <form action="/register" method="POST">

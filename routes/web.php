@@ -32,6 +32,9 @@ Route::middleware(['auth'])->group(function () {
 
     // Route Streaming Musik
     Route::get('/stream-music/{filename}', [SongController::class, 'stream'])->name('music.stream');
+
+    // Statistik putar (dipanggil player, fire-and-forget)
+    Route::post('/api/play/{songId}', [SongController::class, 'trackPlay'])->name('api.play');
     
     // --- FAVORITE SYSTEM ---
     Route::get('/favorites', [FavoriteController::class, 'index'])->name('favorites');

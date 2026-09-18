@@ -4,7 +4,18 @@ import {
   Mic, Pause, Play, Repeat, Settings, Shuffle, SkipBack, SkipForward, Volume2, X,
 } from 'lucide-react';
 import { addSongToPlaylist, formatTime, toggleFavorite } from '../lib/api';
-import { usePlayer } from '../lib/player';
+import { clearPersistedPlayerState, usePlayer } from '../lib/player';
+
+function doLogout(formId) {
+  // Tandai logout agar persist tidak menulis balik, hentikan audio,
+  // dan buang antrean tersimpan supaya user berikutnya mulai bersih.
+  try {
+    window.__mm_logging_out = true;
+    clearPersistedPlayerState();
+    document.querySelectorAll('audio').forEach((a) => { try { a.pause(); a.removeAttribute('src'); a.load?.(); } catch {} });
+  } catch {}
+  document.getElementById(formId)?.submit();
+}
 
 function NavItem({ href, active, icon: Icon, label }) {
   return (
@@ -74,7 +85,7 @@ function Sidebar({ page, isAdmin, playlists, open, onClose }) {
         </form>
         <button
           className="mm-logout-btn"
-          onClick={() => document.getElementById('sidebar-logout-form')?.submit()}
+          onClick={() => doLogout('sidebar-logout-form')}
         >
           <LogOut size={19} /> Logout
         </button>
@@ -94,8 +105,14 @@ function LayoutGridIcon(props) {
   );
 }
 
-function TopBar({ user, isAdmin, onMenu }) {
+function TopBar({ user, isAdmin, page, onMenu }) {
   const [open, setOpen] = useState(false);
+  // Profile hanya muncul di dashboard:
+  // - user biasa -> hanya di dashboard user (page === 'home')
+  // - admin -> hanya di dashboard admin (page diawali 'admin')
+  const showProfile = user
+    ? (isAdmin ? String(page || '').startsWith('admin') : page === 'home')
+    : false;
   return (
     <div className="mm-topbar">
       <button className="mm-icon-btn" onClick={onMenu} id="mm-menu-btn" title="Open menu">
@@ -103,7 +120,7 @@ function TopBar({ user, isAdmin, onMenu }) {
       </button>
       <div className="mm-user-cluster">
         {user ? (
-          <>
+          showProfile ? (
             <div style={{ position: 'relative' }}>
               <button className="mm-user-chip" onClick={() => setOpen((v) => !v)}>
                 <span className="mm-avatar">{(user.name || 'U').slice(0, 1).toUpperCase()}</span>
@@ -120,16 +137,14 @@ function TopBar({ user, isAdmin, onMenu }) {
                     href="/logout"
                     className="mm-nav-link"
                     style={{ color: '#fb7185' }}
-                    onClick={(e) => { e.preventDefault(); document.getElementById('logout-form')?.submit(); }}
+                    onClick={(e) => { e.preventDefault(); doLogout('logout-form'); }}
                   >
                     <LogOut size={16} /> Log out
                   </a>
                 </div>
               )}
             </div>
-            <a href="/favorites" className="mm-icon-btn" title="Liked songs"><Heart size={17} /></a>
-            <a href={isAdmin ? '/admin/songs' : '/library'} className="mm-icon-btn" title="Settings"><Settings size={17} /></a>
-          </>
+          ) : null
         ) : (
           <>
             <a href="/login" style={{ color: 'var(--mm-dim)', fontWeight: 700, textDecoration: 'none', fontSize: '0.88rem' }}>Log in</a>
@@ -156,7 +171,14 @@ function PlayerBar() {
           p.setCurrentTime(el.currentTime);
         }
       }}
-      onLoadedMetadata={(e) => { if (isFinite(e.currentTarget.duration)) p.setDuration(e.currentTarget.duration); }}
+        onLoadedMetadata={(e) => {
+          const el = e.currentTarget;
+          if (isFinite(el.duration)) p.setDuration(el.duration);
+          const rt = p.consumeResumeTime ? p.consumeResumeTime() : null;
+          if (rt && isFinite(el.duration) && rt < el.duration) {
+            try { el.currentTime = rt; } catch {}
+          }
+        }}
       onEnded={() => { if (p.repeat) { const el = p.audioRef.current; if (el) { el.currentTime = 0; el.play().catch(() => {}); } } else p.next(); }}
       onPlay={() => p.setIsPlaying(true)}
       onPause={() => p.setIsPlaying(false)}
@@ -423,12 +445,12 @@ export default function AppShell({ page, user, isAdmin, playlists, children }) {
         <Sidebar page={page} isAdmin={isAdmin} playlists={playlists} open={sideOpen} onClose={() => setSideOpen(false)} />
         <div className="mm-col">
           <main className="mm-main">
-            <TopBar user={user} isAdmin={isAdmin} onMenu={() => setSideOpen(true)} />
+            <TopBar user={user} isAdmin={isAdmin} page={page} onMenu={() => setSideOpen(true)} />
             {children}
           </main>
+          <PlayerBar />
         </div>
       </div>
-      <PlayerBar />
       <LyricsOverlay />
       <PlaylistModal playlists={playlists} />
       {p.toast && (

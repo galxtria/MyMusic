@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\View;
 use App\Models\Song; 
 use Symfony\Component\HttpFoundation\BinaryFileResponse; // Tambahkan ini
@@ -72,8 +73,31 @@ class SongController extends Controller
     // Mengambil lagu dengan pagination (16 lagu per halaman)
         $songs = Song::latest()->paginate(16); 
         $trendingSongs = Song::inRandomOrder()->limit(12)->get();
+        $mostPlayed = Song::where('play_count', '>', 0)->orderByDesc('play_count')->limit(12)->get();
+
+        // Riwayat user: 10 lagu berbeda yang terakhir diputar.
+        $recentIds = DB::table('song_histories')
+            ->where('user_id', auth()->id())
+            ->orderByDesc('played_at')
+            ->limit(40)
+            ->pluck('song_id')
+            ->unique()
+            ->take(10)
+            ->values();
+        $recentlyPlayed = $recentIds->isNotEmpty()
+            ? Song::whereIn('id', $recentIds)->get()->sortBy(fn($s) => array_search($s->id, $recentIds->all()))->values()
+            : collect();
+
+        // Koleksi pribadi user: lagu yang di-like + ada di playlist-nya.
+        // Kosong untuk user baru (tidak lagi menampilkan semua lagu sistem).
+        $savedIds = auth()->user()->favoriteSongs()->pluck('songs.id')
+            ->merge(DB::table('playlist_song')->whereIn('playlist_id', auth()->user()->playlists()->pluck('id'))->pluck('song_id'))
+            ->unique()->values();
+        $myCollection = $savedIds->isNotEmpty()
+            ? Song::whereIn('id', $savedIds)->latest()->limit(15)->get()
+            : collect();
         
-        return view('home', compact('songs', 'trendingSongs'));
+        return view('home', compact('songs', 'trendingSongs', 'mostPlayed', 'recentlyPlayed', 'myCollection'));
     }
 
     // 1b. COLLECTION GRID (JSON — navigasi halaman tanpa reload)
@@ -81,20 +105,61 @@ class SongController extends Controller
         return response()->json(Song::latest()->paginate(16));
     }
 
-    // 2. SEARCH
+    // 1c. TRACK PLAY — catat play count + riwayat user (dipanggil player tiap ganti lagu).
+    public function trackPlay(Request $request, $songId)
+    {
+        $song = Song::find($songId);
+        if (!$song) {
+            return response()->json(['message' => 'Song not found'], 404);
+        }
+        $song->increment('play_count');
+        $song->update(['last_played_at' => now()]);
+        DB::table('song_histories')->insert([
+            'user_id' => auth()->id(),
+            'song_id' => $song->id,
+            'played_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        return response()->json(['status' => 'ok']);
+    }
+
+    // 2. SEARCH (toleran: abaikan beda kapital, spasi, dan tanda hubung.
+    // "kpop" cocok dengan "K-Pop"/"K Pop", "hiphop" dengan "Hip Hop", dst.)
     public function search(Request $request)
     {
-        $query = $request->input('q');
+        $query = trim($request->input('q', ''));
+        // Versi normal: huruf kecil tanpa spasi/hubung/underscore.
+        $norm = mb_strtolower(preg_replace('/[\s\-_]+/', '', $query));
+        // Ekspresi SQL yang menormalisasi kolom dengan cara yang sama.
+        $strip = fn($col) => "REPLACE(REPLACE(REPLACE(LOWER({$col}), '-', ''), ' ', ''), '_', '')";
+
+        $matchCols = function ($q) use ($query, $norm, $strip) {
+            $q->where('title', 'LIKE', "%{$query}%")
+              ->orWhere('artist', 'LIKE', "%{$query}%")
+              ->orWhere('genre', 'LIKE', "%{$query}%");
+            if ($norm !== '') {
+                $like = "%{$norm}%";
+                $q->orWhereRaw($strip('title') . ' LIKE ?', [$like])
+                  ->orWhereRaw($strip('artist') . ' LIKE ?', [$like])
+                  ->orWhereRaw($strip('genre') . ' LIKE ?', [$like]);
+            }
+            // Alias yang tidak tertangkap normalisasi (karakter khusus).
+            foreach (['rnb' => 'r&b'] as $from => $to) {
+                if ($norm !== '' && str_contains($norm, $from)) {
+                    $q->orWhere('title', 'LIKE', "%{$to}%")
+                      ->orWhere('artist', 'LIKE', "%{$to}%")
+                      ->orWhere('genre', 'LIKE', "%{$to}%");
+                }
+            }
+        };
+
         $artists = Song::select('artist', 'artist_image', 'album_art')
-                    ->where('artist', 'LIKE', "%$query%")
+                    ->where($matchCols)
                     ->get()
                     ->unique('artist');
 
-        $songs = Song::where(function($q) use ($query) {
-                    $q->where('title', 'LIKE', "%$query%")
-                      ->orWhere('artist', 'LIKE', "%$query%")
-                      ->orWhere('genre', 'LIKE', "%$query%");
-                })->get();
+        $songs = Song::where($matchCols)->get();
 
         return view('search', compact('songs', 'artists', 'query'));
     }

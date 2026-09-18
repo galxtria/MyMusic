@@ -13,7 +13,7 @@ function fmtSecs(s) {
 // Hasil API langsung bisa diputar (stream on-demand) tanpa harus diimpor dulu.
 function apiTrackToSong(t) {
   const vid = (t.url || '').split('?v=')[1] || t.url || '';
-  return normalizeSong({
+  const s = normalizeSong({
     id: `yt-${vid}`,
     title: t.title,
     artist: t.uploaderName,
@@ -22,6 +22,9 @@ function apiTrackToSong(t) {
     lyrics: '',
     duration: fmtSecs(t.duration),
   });
+  s.vid = vid;
+  s.raw = t; // metadata API asli untuk auto-stub saat di-play
+  return s;
 }
 
 export default function AdminImport() {
