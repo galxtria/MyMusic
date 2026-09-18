@@ -51,6 +51,12 @@ class User extends Authenticatable
         return $this->belongsToMany(Song::class, 'likes', 'user_id', 'song_id');
     }
 
+    public function heroPins() {
+        return $this->belongsToMany(Song::class, 'hero_pins', 'user_id', 'song_id')
+            ->withPivot('position')
+            ->orderBy('hero_pins.position');
+    }
+
     public function playlists() {
         return $this->hasMany(Playlist::class);
     }

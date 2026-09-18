@@ -41,6 +41,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/favorites/toggle/{songId}', [FavoriteController::class, 'toggle'])->name('favorites.toggle');
     Route::get('/favorites/check/{songId}', [FavoriteController::class, 'check'])->name('favorites.check');
 
+    // --- HERO PINS (spotlight dashboard per user) ---
+    Route::post('/hero-pins/toggle/{songId}', [FavoriteController::class, 'toggleHeroPin'])->name('hero-pins.toggle');
+
     // --- PLAYLIST SYSTEM ---
     Route::post('/playlist/store', [FavoriteController::class, 'storePlaylist'])->name('playlist.store');
     Route::post('/playlist/add-song', [FavoriteController::class, 'addSongToPlaylist'])->name('playlist.add-song');
@@ -62,6 +65,7 @@ Route::middleware(['auth'])->group(function () {
 
     // --- YouTube API Routes ---
     Route::get('/api/youtube/search', [\App\Http\Controllers\YouTubeController::class, 'search'])->name('youtube.search');
+    Route::get('/api/youtube/trending', [\App\Http\Controllers\YouTubeController::class, 'trending'])->name('youtube.trending');
     Route::post('/api/youtube/add-to-library', [\App\Http\Controllers\YouTubeController::class, 'addToLibrary'])->name('youtube.add');
     Route::get('/api/youtube/mood/{mood}', [\App\Http\Controllers\YouTubeController::class, 'moodSearch'])->name('youtube.mood');
     Route::get('/api/stream-audio', [\App\Http\Controllers\YouTubeController::class, 'streamAudio'])->name('youtube.streamAudio');

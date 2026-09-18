@@ -23,6 +23,8 @@ $props = [
         'next' => $songs->nextPageUrl(),
     ],
     'favoriteIds' => $me ? $me->favoriteSongs->pluck('id')->values() : [],
+    'heroPins' => isset($heroPins) ? $heroPins->values() : [],
+    'heroPinIds' => isset($heroPinIds) ? $heroPinIds : [],
     'playlists' => $me ? $me->playlists()->get(['id', 'name', 'cover_path'])->values() : [],
     'shellPage' => 'home',
 ];

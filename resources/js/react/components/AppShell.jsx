@@ -282,8 +282,21 @@ export function LikeButton({ songId, size = 17 }) {
 function LyricsOverlay() {
   const p = usePlayer();
   const bodyRef = useRef(null);
-  const activeIdx = p.lyrics.findLastIndex((l) => p.currentTime >= l.t);
+  const lyricShift = Number(p.lyricsOffset) || 0;
+  const activeIdx = p.lyrics.findLastIndex((l) => (p.currentTime + lyricShift) >= l.t);
   const remaining = Math.max(0, (p.duration || 0) - (p.currentTime || 0));
+
+  // Refresh posisi lebih rapat (±120ms) saat overlay terbuka agar highlight
+  // baris tidak tertinggal; event timeupdate bawaan audio hanya ~4x/detik.
+  useEffect(() => {
+    if (!p.lyricsOpen) return;
+    const id = setInterval(() => {
+      const el = p.audioRef.current;
+      if (el && isFinite(el.currentTime)) p.setCurrentTime(el.currentTime);
+    }, 120);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.lyricsOpen]);
 
   // ESC closes, background page scroll is locked while open.
   useEffect(() => {
@@ -312,6 +325,12 @@ function LyricsOverlay() {
       <button className="mm-lyrics-close" onClick={() => p.setLyricsOpen(false)} title="Close lyrics">
         <X size={24} />
       </button>
+      <div className="mm-lyrics-sync" title="Geser timing lirik lagu ini (tersimpan otomatis)">
+        <button onClick={() => p.shiftLyricsOffset(-0.5)} title="Mundurkan lirik 0.5 dtk">−0.5</button>
+        <span>{lyricShift > 0 ? `+${lyricShift.toFixed(1)}` : lyricShift.toFixed(1)}s</span>
+        <button onClick={() => p.shiftLyricsOffset(0.5)} title="Majukan lirik 0.5 dtk">+0.5</button>
+        {lyricShift !== 0 && <button onClick={p.resetLyricsOffset} title="Kembalikan ke 0">Reset</button>}
+      </div>
       <div className="mm-lyrics-inner">
         <div className="mm-lp-left">
           {p.current?.cover && (

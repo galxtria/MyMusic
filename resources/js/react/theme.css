@@ -134,6 +134,22 @@ img { object-fit: cover; }
 }
 .mm-chip:hover { color: #fff; border-color: rgba(255, 255, 255, 0.2); }
 .mm-chip.active { background: var(--mm-teal); border-color: var(--mm-teal); color: var(--mm-teal-ink); font-weight: 800; }
+.mm-chip-sm { padding: 5px 14px; font-size: 0.74rem; }
+
+/* ================= popular per periode ================= */
+.rt-row .rt-pop-wrap { position: relative; flex: 0 0 158px; min-width: 0; }
+.rt-pop-rank {
+  position: absolute; top: 8px; left: 8px; z-index: 2;
+  font-size: 0.72rem; font-weight: 900; color: #0b0b10;
+  background: linear-gradient(135deg, #fde68a, #f59e0b);
+  border-radius: 999px; padding: 3px 9px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+.rt-pop-plays {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  font-size: 0.64rem; font-weight: 800; color: #fff;
+  background: rgba(10, 10, 16, 0.62); border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px; padding: 3px 8px; backdrop-filter: blur(6px); white-space: nowrap;
+}
 
 /* ================= buttons ================= */
 .mm-btn-primary {
@@ -178,7 +194,7 @@ img { object-fit: cover; }
 .mm-song-artist { color: var(--mm-dim); font-size: 0.76rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ================= reference hero carousel ================= */
-.rt-hero-row { display: flex; gap: 16px; overflow-x: auto; padding: 6px 2px 14px; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.rt-hero-row { display: flex; gap: 16px; overflow-x: auto; padding: 24px 4px 44px; scroll-snap-type: x mandatory; scrollbar-width: none; }
 .rt-hero-row::-webkit-scrollbar { display: none; }
 .rt-hero-card {
   position: relative; flex: 0 0 215px; height: 295px; border-radius: 20px; overflow: hidden;
@@ -193,6 +209,43 @@ img { object-fit: cover; }
 }
 .rt-hero-title { font-weight: 800; font-size: 1.02rem; line-height: 1.2; }
 .rt-hero-artist { color: rgba(255, 255, 255, 0.72); font-size: 0.8rem; font-weight: 500; margin-top: 3px; }
+
+/* ================= hero spotlight (highlight) ================= */
+.rt-hero-card { transition: transform 0.3s var(--mm-ease), box-shadow 0.3s, border-color 0.3s; }
+.rt-hero-card:hover { transform: translateY(-5px); box-shadow: 0 14px 32px rgba(59, 130, 246, 0.32); border-color: rgba(96, 165, 250, 0.55); }
+.rt-hero-lead { border-color: rgba(96, 165, 250, 0.5); box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35), 0 12px 30px rgba(59, 130, 246, 0.3); }
+.rt-hero-rank {
+  position: absolute; top: 12px; left: 12px; z-index: 2;
+  font-size: 0.78rem; font-weight: 900; letter-spacing: 0.5px; color: #0b0b10;
+  background: linear-gradient(135deg, #fde68a, #f59e0b);
+  border-radius: 999px; padding: 4px 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.rt-hero-pill {
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.68rem; font-weight: 800; color: #fff;
+  background: rgba(10, 10, 16, 0.62); border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px; padding: 4px 9px; backdrop-filter: blur(6px);
+}
+.rt-hero-pill-pin { color: #fde68a; border-color: rgba(251, 191, 36, 0.5); }
+.rt-hero-top-right {
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  display: flex; align-items: center; gap: 6px;
+}
+.rt-hero-top-right .rt-hero-pill { position: static; }
+.rt-hero-unpin {
+  width: 28px; height: 28px; display: grid; place-items: center; flex-shrink: 0;
+  color: #fde68a; background: rgba(10, 10, 16, 0.62); border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 50%; cursor: pointer; transition: background 0.2s, transform 0.2s;
+}
+.rt-hero-unpin:hover { background: rgba(251, 191, 36, 0.35); transform: scale(1.1); }
+.rt-hero-mini {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; padding: 30px 12px 10px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), transparent);
+}
+.rt-hero-mini-title { font-weight: 800; font-size: 0.84rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rt-hero-mini-artist { color: rgba(255, 255, 255, 0.7); font-size: 0.7rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rt-hero-hint { margin-left: auto; font-size: 0.72rem; font-weight: 600; color: var(--mm-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ================= horizontal rows + chevrons ================= */
 .rt-row { display: flex; gap: 16px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: none; scroll-behavior: smooth; }
@@ -302,6 +355,19 @@ img { object-fit: cover; }
   border-radius: 50%; color: #fff; cursor: pointer; transition: background 0.2s, transform 0.2s;
 }
 .mm-lyrics-close:hover { background: rgba(255, 255, 255, 0.26); transform: scale(1.07); }
+.mm-lyrics-sync {
+  position: fixed; top: 22px; right: 26px; z-index: 3;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px; padding: 6px 8px; backdrop-filter: blur(8px);
+}
+.mm-lyrics-sync button {
+  background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff; font-size: 0.72rem; font-weight: 800; border-radius: 999px;
+  padding: 5px 10px; cursor: pointer; white-space: nowrap;
+}
+.mm-lyrics-sync button:hover { background: rgba(255, 255, 255, 0.26); }
+.mm-lyrics-sync span { color: #fff; font-size: 0.74rem; font-weight: 800; min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 .mm-lyrics-inner {
   position: relative; z-index: 1; display: flex; gap: 64px; align-items: center;
   width: 100%; max-width: 1220px; margin: auto; padding: 40px 56px; max-height: 100vh;
@@ -393,6 +459,7 @@ img { object-fit: cover; }
   .mm-hide-mobile { display: none !important; }
   .rt-hero-lead { flex-basis: 250px; height: 310px; }
   .rt-hero-card { flex-basis: 180px; height: 250px; }
+  .rt-hero-hint { display: none; }
   .mm-lyrics-inner { flex-direction: column; gap: 14px; padding: 74px 22px 30px; margin: 0; max-height: none; overflow-y: auto; }
   .mm-lp-left { flex: none; width: 100%; padding-top: 0; display: grid; grid-template-columns: 64px 1fr; gap: 6px 14px; align-items: center; }
   .mm-lp-cover { border-radius: 10px; }
@@ -406,6 +473,7 @@ img { object-fit: cover; }
   .mm-lyrics-body { max-height: none; overflow: visible; padding: 6px 0 40px; }
   .mm-lyric-line { font-size: 1.42rem; }
   .mm-lyrics-close { top: 14px; left: 16px; }
+  .mm-lyrics-sync { top: 14px; right: 16px; }
 }
 
 /* Compact phone layout for the docked player */

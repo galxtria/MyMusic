@@ -96,8 +96,15 @@ class SongController extends Controller
         $myCollection = $savedIds->isNotEmpty()
             ? Song::whereIn('id', $savedIds)->latest()->limit(15)->get()
             : collect();
+
+        // Populer per periode dihitung dari API (endpoint youtube.trending),
+        // bukan dari most-play lokal.
+
+        // Pin hero milik user (maks 8). Kosong = hero fallback ke most played.
+        $heroPins = auth()->user()->heroPins()->limit(8)->get();
+        $heroPinIds = $heroPins->pluck('id')->values();
         
-        return view('home', compact('songs', 'trendingSongs', 'mostPlayed', 'recentlyPlayed', 'myCollection'));
+        return view('home', compact('songs', 'trendingSongs', 'mostPlayed', 'recentlyPlayed', 'myCollection', 'heroPins', 'heroPinIds'));
     }
 
     // 1b. COLLECTION GRID (JSON — navigasi halaman tanpa reload)

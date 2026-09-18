@@ -113,6 +113,103 @@ class YouTubeController extends Controller
     }
 
     /**
+     * Trending berbasis API (Piped) dengan periode.
+     * - today: hasil live hari ini (sekaligus disimpan sebagai snapshot harian).
+     * - week: gabungan snapshot 7 hari terakhir, diranking berdasar
+     *   frekuensi + posisi muncul, jadi daftarnya ganti tiap minggu.
+     */
+    public function trending(Request $request)
+    {
+        $period = strtolower($request->input('period', 'today')) === 'week' ? 'week' : 'today';
+
+        if ($period === 'week') {
+            $merged = $this->weeklyTrending();
+            if (!empty($merged)) return response()->json(['results' => $merged, 'period' => 'week']);
+        }
+
+        // Cache 30 menit agar pindah tab / reload tidak menghajar API berkali-kali.
+        $items = Cache::remember('trending_live', now()->addMinutes(30), function () {
+            return $this->fetchPopularItems();
+        });
+        if (empty($items)) return response()->json(['results' => []], 500);
+        $this->snapshotToday($items);
+        return response()->json(['results' => $items, 'period' => 'today']);
+    }
+
+    /**
+     * Ambil daftar populer live dari API (dipakai tab Today + snapshot).
+     */
+    private function fetchPopularItems(): array
+    {
+        $searches = [
+            ['q' => 'global hits popular songs', 'filter' => 'music_songs'],
+            ['q' => 'top songs worldwide 2026', 'filter' => 'music_songs'],
+        ];
+        $merged = [];
+        foreach ($searches as $params) {
+            $response = $this->pipedGet('/search', $params);
+            if (!$response) continue;
+            foreach (($response->json()['items'] ?? []) as $item) {
+                $key = $item['url'] ?? null;
+                if ($key && !isset($merged[$key])) $merged[$key] = $item;
+            }
+        }
+        if (empty($merged)) return [];
+        $items = array_filter(array_values($merged), function ($i) {
+            $dur = (int) ($i['duration'] ?? 0);
+            return ($i['type'] ?? '') === 'stream'
+                && empty($i['isLive'])
+                && $dur > 0 && $dur <= 1200;
+        });
+        return array_slice(array_values($items), 0, 15);
+    }
+
+    /**
+     * Simpan snapshot trending hari ini (8 hari TTL, 1 key per tanggal).
+     */
+    private function snapshotToday(array $items): void
+    {
+        try {
+            Cache::put('trending_day_' . now()->toDateString(), array_values($items), now()->addDays(8));
+        } catch (\Throwable $e) {
+            // cache gagal = abaikan, trending live tetap jalan
+        }
+    }
+
+    /**
+     * Gabungkan snapshot 7 hari terakhir jadi ranking mingguan.
+     * Skor = jumlah (16 - posisi) di tiap hari kemunculan: makin sering dan
+     * makin atas posisinya, makin tinggi rankingnya.
+     */
+    private function weeklyTrending(): array
+    {
+        $scores = [];
+        $byUrl = [];
+        for ($d = 0; $d < 7; $d++) {
+            try {
+                $day = Cache::get('trending_day_' . now()->subDays($d)->toDateString(), []);
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if (!is_array($day)) continue;
+            foreach (array_values($day) as $pos => $item) {
+                $url = is_array($item) ? ($item['url'] ?? null) : null;
+                if (!$url) continue;
+                $scores[$url] = ($scores[$url] ?? 0) + (16 - min($pos, 15));
+                if (!isset($byUrl[$url])) $byUrl[$url] = $item;
+            }
+        }
+        if (empty($scores)) return [];
+        arsort($scores);
+        $out = [];
+        foreach (array_keys($scores) as $url) {
+            $out[] = $byUrl[$url];
+            if (count($out) >= 15) break;
+        }
+        return $out;
+    }
+
+    /**
      * Mood-based discovery.
      */
     public function moodSearch($mood)
@@ -358,15 +455,14 @@ class YouTubeController extends Controller
                 if ($lrc !== '') return $lrc;
             }
 
-            // 2) Fallback: cari daftar kandidat, ambil yang ada syncedLyrics + durasi mirip.
+            // 2) Fallback: cari daftar kandidat, ambil yang durasinya PALING MIRIP
+            // (bukan asal kandidat pertama) agar timestamp sinkron dengan versinya.
             $res = Http::timeout(15)->get('https://lrclib.net/api/search', [
                 'q' => trim($t . ' ' . $a),
             ]);
             if ($res->successful() && is_array($res->json())) {
-                foreach ($res->json() as $item) {
-                    $lrc = $this->pickSynced($item, $durationSecs);
-                    if ($lrc !== '') return $lrc;
-                }
+                $lrc = $this->pickBestSynced($res->json(), $durationSecs);
+                if ($lrc !== '') return $lrc;
             }
         } catch (\Throwable $e) {
             // abaikan — import tetap jalan tanpa lirik
@@ -388,5 +484,33 @@ class YouTubeController extends Controller
         // Minimal 3 baris timestamp agar layak disebut sinkron.
         if (substr_count($lrc, '[') < 3) return '';
         return $lrc;
+    }
+
+    /**
+     * Dari daftar kandidat lrclib, pilih syncedLyrics yang durasinya paling
+     * mirip dengan audio (toleransi ±15 detik). Mencegah dapat timestamp milik
+     * versi live/radio-edit yang selisihnya beberapa detik.
+     */
+    private function pickBestSynced($items, int $durationSecs): string
+    {
+        if (!is_array($items)) return '';
+        $best = '';
+        $bestDiff = null;
+        foreach ($items as $item) {
+            if (!is_array($item) || empty($item['syncedLyrics'])) continue;
+            $lrc = trim((string) $item['syncedLyrics']);
+            if (substr_count($lrc, '[') < 3) continue;
+            if ($durationSecs > 0 && isset($item['duration']) && is_numeric($item['duration'])) {
+                $diff = abs((float) $item['duration'] - $durationSecs);
+                if ($diff > 15) continue;
+                if ($bestDiff === null || $diff < $bestDiff) {
+                    $bestDiff = $diff;
+                    $best = $lrc;
+                }
+            } elseif ($best === '') {
+                $best = $lrc; // tanpa info durasi: pakai kandidat valid pertama
+            }
+        }
+        return $best;
     }
 }

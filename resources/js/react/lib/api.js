@@ -52,6 +52,14 @@ export async function checkFavorite(songId) {
   return jsonOrThrow(res);
 }
 
+export async function toggleHeroPin(songId) {
+  const res = await fetch(`/hero-pins/toggle/${songId}`, {
+    method: 'POST',
+    headers: { 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+  });
+  return jsonOrThrow(res);
+}
+
 export async function addSongToPlaylist(playlistId, songId) {
   const res = await fetch('/playlist/add-song', {
     method: 'POST',
@@ -96,13 +104,18 @@ export async function fetchLyrics(title, artist) {
 
 export function parseLrc(lrc) {
   if (!lrc) return [];
+  // Beberapa file LRC punya tag offset global, mis. [offset:+500] (milidetik).
+  // Tanpa ini seluruh lirik geser setengah detik atau lebih.
+  let offsetMs = 0;
+  const off = /\[offset:\s*([+-]?\d+)\]/i.exec(lrc);
+  if (off) offsetMs = parseInt(off[1], 10) || 0;
   const reg = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/;
   return lrc
     .split('\n')
     .map((line) => {
       const m = reg.exec(line);
       if (!m) return null;
-      const t = parseFloat(m[1]) * 60 + parseFloat(m[2]) + (m[3] ? parseFloat(`0.${m[3]}`) : 0);
+      const t = parseFloat(m[1]) * 60 + parseFloat(m[2]) + (m[3] ? parseFloat(`0.${m[3]}`) : 0) + offsetMs / 1000;
       const txt = line.replace(reg, '').trim();
       return txt ? { t, txt } : null;
     })

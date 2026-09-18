@@ -96,4 +96,34 @@ class FavoriteController extends Controller
         $playlist->songs()->detach($songId);
         return back()->with('success', 'Song removed');
     }
+
+    /**
+     * Pin / unpin lagu ke hero (spotlight) dashboard user. Maksimal 8 pin.
+     */
+    public function toggleHeroPin($songId)
+    {
+        $song = Song::find($songId);
+        if (!$song) {
+            return response()->json(['message' => 'Song not found'], 404);
+        }
+        $user = auth()->user();
+        $already = $user->heroPins()->where('songs.id', $songId)->exists();
+        if ($already) {
+            $user->heroPins()->detach($songId);
+            $status = 'unpinned';
+        } else {
+            if ($user->heroPins()->count() >= 8) {
+                return response()->json(['message' => 'Maksimal 8 lagu di-pin ke hero. Lepas satu dulu.'], 422);
+            }
+            $max = (int) DB::table('hero_pins')->where('user_id', $user->id)->max('position');
+            $user->heroPins()->attach($songId, ['position' => $max + 1]);
+            $status = 'pinned';
+        }
+        $pinnedIds = $user->heroPins()->pluck('songs.id')->values();
+        return response()->json([
+            'status' => $status,
+            'message' => $status === 'pinned' ? 'Ditambahkan ke hero' : 'Dilepas dari hero',
+            'pinnedIds' => $pinnedIds,
+        ]);
+    }
 }

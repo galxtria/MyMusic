@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Heart, History, LoaderCircle, Play, Plus, TrendingUp } from 'lucide-react';
-import { addYouTubeToLibrary, normalizeSong, toggleFavorite } from '../lib/api';
+import { ChevronLeft, ChevronRight, Flame, Heart, History, LoaderCircle, Pin, PinOff, Play, Plus, TrendingUp } from 'lucide-react';
+import { addYouTubeToLibrary, normalizeSong, toggleFavorite, toggleHeroPin } from '../lib/api';
 import { usePlayer } from '../lib/player';
 import { EmptyState, SongCard } from '../components/ui';
 
@@ -74,7 +74,7 @@ function CollectionPagination({ pag, loading, onGo }) {
   );
 }
 
-export default function Home({ songs = [], trending = [], artists = [], pagination, mostPlayed = [], recentlyPlayed = [], myCollection = [] }) {
+export default function Home({ songs = [], trending = [], artists = [], pagination, mostPlayed = [], recentlyPlayed = [], myCollection = [], heroPins = [], heroPinIds = [] }) {
   const p = usePlayer();
   const [mood, setMood] = useState(null);
   const [moodTracks, setMoodTracks] = useState([]);
@@ -85,9 +85,11 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
   // saat masuk antrean, jadi simpan terpisah untuk auto-stub like/simpan).
   const rawByVid = useRef({});
 
-  // ===== Trending Online: lagu API langsung tampil + bisa di-play =====
-  const [onlineTrending, setOnlineTrending] = useState([]);
-  const [onlineState, setOnlineState] = useState('idle');
+  // ===== Trending API per periode: Today (live) / This week (agregat 7 hari) =====
+  const [popPeriod, setPopPeriod] = useState('today');
+  const [trendToday, setTrendToday] = useState([]);
+  const [trendWeek, setTrendWeek] = useState([]);
+  const [trendState, setTrendState] = useState('idle');
 
   const onlineToSong = (t) => {
     const vid = (t.url || '').split('?v=')[1] || t.url || '';
@@ -107,25 +109,25 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
 
   useEffect(() => {
     let cancelled = false;
-    setOnlineState('loading');
-    fetch('/api/youtube/mood/popular', { headers: { Accept: 'application/json' } })
+    setTrendState('loading');
+    fetch(`/api/youtube/trending?period=${popPeriod}`, { headers: { Accept: 'application/json' } })
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (cancelled) return;
         if (!ok) throw new Error('bad response');
         const list = (d.results || []).map(onlineToSong);
-        rawByVid.current = {};
         (d.results || []).forEach((t) => {
           const vid = (t.url || '').split('?v=')[1] || t.url || '';
           if (vid) rawByVid.current[vid] = t;
         });
-        setOnlineTrending(list);
-        setOnlineState('done');
+        if (popPeriod === 'today') setTrendToday(list);
+        else setTrendWeek(list);
+        setTrendState('done');
       })
-      .catch(() => { if (!cancelled) setOnlineState('error'); });
+      .catch(() => { if (!cancelled) setTrendState('error'); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [popPeriod]);
 
   // Pastikan lagu online punya baris DB (stub metadata) agar bisa di-like / disimpan.
   const ensureOnlineStub = async (t) => {
@@ -137,6 +139,12 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
     return songId;
   };
 
+  const relinkTrend = (t, songId) => {
+    const upd = (list) => list.map((x) => (x.vid === t.vid ? { ...x, id: songId } : x));
+    setTrendToday(upd);
+    setTrendWeek(upd);
+  };
+
   const likeOnline = async (t) => {
     try {
       const songId = await ensureOnlineStub(t);
@@ -144,7 +152,7 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
       const liked = fav.status === 'liked';
       p.markLiked(songId, liked);
       p.relinkQueueItem(t.id, { id: songId });
-      setOnlineTrending((list) => list.map((x) => (x.vid === t.vid ? { ...x, id: songId } : x)));
+      relinkTrend(t, songId);
       p.showToast(liked ? 'Saved to your library' : 'Removed from your library');
     } catch {
       p.showToast('Could not save track');
@@ -155,7 +163,7 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
     try {
       const songId = await ensureOnlineStub(t);
       p.relinkQueueItem(t.id, { id: songId });
-      setOnlineTrending((list) => list.map((x) => (x.vid === t.vid ? { ...x, id: songId } : x)));
+      relinkTrend(t, songId);
       p.setPlaylistModalSong(songId);
     } catch {
       p.showToast('Could not save track');
@@ -164,11 +172,60 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
 
   const localSongs = useMemo(() => songs.map(normalizeSong), [songs]);
   const trendingSongs = useMemo(() => trending.map(normalizeSong), [trending]);
-  const heroSongs = useMemo(() => [...localSongs].slice(0, 8), [localSongs]);
-  const popular = trendingSongs.length > 0 ? trendingSongs : localSongs;
-  // Satu section: isi dari API trending, fallback ke acak lokal bila API mati/kosong.
-  const popularSongs = onlineState === 'done' && onlineTrending.length > 0 ? onlineTrending : popular;
   const mostPlayedSongs = useMemo(() => mostPlayed.map(normalizeSong), [mostPlayed]);
+
+  // ===== hero (spotlight): pin user dulu, kosong -> most played, masih kosong -> terbaru =====
+  const [pins, setPins] = useState(() => heroPins.map(normalizeSong));
+  const [pinnedIds, setPinnedIds] = useState(() => new Set((heroPinIds || []).map(String)));
+  const heroSource = pins.length > 0 ? 'pins' : mostPlayedSongs.length > 0 ? 'most' : 'fresh';
+  const heroSongs = useMemo(() => {
+    if (pins.length > 0) return pins.slice(0, 8);
+    if (mostPlayedSongs.length > 0) return mostPlayedSongs.slice(0, 8);
+    return [...localSongs].slice(0, 8);
+  }, [pins, mostPlayedSongs, localSongs]);
+
+  const togglePin = async (song) => {
+    const id = song?.id;
+    if (id == null || String(id).startsWith('yt-') || Number.isNaN(Number(id))) {
+      p.showToast('Simpan lagu ke library dulu sebelum di-pin');
+      return;
+    }
+    try {
+      const data = await toggleHeroPin(id);
+      const isPinned = data.status === 'pinned';
+      setPinnedIds((prev) => {
+        const copy = new Set(prev);
+        if (isPinned) copy.add(String(id));
+        else copy.delete(String(id));
+        return copy;
+      });
+      setPins((prev) => isPinned
+        ? [...prev.filter((x) => String(x.id) !== String(id)), normalizeSong(song)].slice(0, 8)
+        : prev.filter((x) => String(x.id) !== String(id)));
+      p.showToast(data.message || (isPinned ? 'Ditambahkan ke hero' : 'Dilepas dari hero'));
+    } catch (e) {
+      p.showToast(e.message || 'Could not update pin');
+    }
+  };
+
+  const pinBtn = (s) => {
+    if (s?.id == null || String(s.id).startsWith('yt-') || Number.isNaN(Number(s.id))) return null;
+    const isPinned = pinnedIds.has(String(s.id));
+    return (
+      <button
+        className="mm-icon-btn" style={{ width: 30, height: 30, ...(isPinned ? { color: '#fbbf24', borderColor: 'rgba(251,191,36,0.45)' } : {}) }}
+        onClick={(e) => { e.stopPropagation(); togglePin(s); }}
+        title={isPinned ? 'Lepas dari hero' : 'Pin ke hero'}
+      >
+        <Pin size={14} fill={isPinned ? 'currentColor' : 'none'} />
+      </button>
+    );
+  };
+  const popular = trendingSongs.length > 0 ? trendingSongs : localSongs;
+  // Trending murni dari API per periode; kosong/gagal -> fallback lokal.
+  const activeTrend = popPeriod === 'today' ? trendToday : trendWeek;
+  const popularSongs = activeTrend.length > 0 ? activeTrend : popular;
+  const popularIsPeriod = activeTrend.length > 0;
   const recentSongs = useMemo(() => recentlyPlayed.map(normalizeSong), [recentlyPlayed]);
   const mySongs = useMemo(() => myCollection.map(normalizeSong), [myCollection]);
   const recentRef = useRef(null);
@@ -176,9 +233,12 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
   const mineRef = useRef(null);
 
   const cardPlaylistAction = (s) => (
-    <button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(s.id); }} title="Save to playlist">
-      <Plus size={14} />
-    </button>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      {pinBtn(s)}
+      <button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(s.id); }} title="Save to playlist">
+        <Plus size={14} />
+      </button>
+    </span>
   );
 
   // Collection grid has its own AJAX pagination — navigating pages only
@@ -229,35 +289,71 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
 
   return (
     <div>
-      {/* ===== hero carousel ===== */}
+      {/* ===== hero (spotlight): pin user, fallback most played / terbaru ===== */}
       {heroSongs.length > 0 && (
-        <div className="rt-hero-row mm-enter" ref={heroRef}>
-          {heroSongs.map((s, i) => (
-            <div
-              key={s.id}
-              className={`rt-hero-card ${i === 0 ? 'rt-hero-lead' : ''}`}
-              onClick={() => playList(heroSongs, i)}
-            >
-              <img src={s.cover} alt={s.title} loading={i > 2 ? 'lazy' : undefined} onError={(e) => { e.currentTarget.src = '/images/default-cover.png'; }} />
-              {i === 0 && (
-                <div className="rt-hero-info">
-                  <div style={{ minWidth: 0 }}>
-                    <div className="rt-hero-title">{s.title}</div>
-                    <div className="rt-hero-artist">{s.artist}</div>
-                  </div>
-                  <button
-                    className="rt-play-dim"
-                    style={{ flexShrink: 0 }}
-                    onClick={(e) => { e.stopPropagation(); playList(heroSongs, 0); }}
-                    title="Play"
-                  >
-                    <Play size={20} style={{ marginLeft: 2 }} />
-                  </button>
+        <>
+          <div className="mm-section mm-enter">
+            {heroSource === 'pins'
+              ? <Pin size={19} style={{ color: '#fbbf24' }} />
+              : heroSource === 'most'
+                ? <Flame size={19} style={{ color: 'var(--mm-accent)' }} />
+                : <TrendingUp size={19} style={{ color: 'var(--mm-teal)' }} />}
+            <span>{heroSource === 'pins' ? 'Your spotlight' : heroSource === 'most' ? 'Most played right now' : 'Fresh uploads'}</span>
+            {heroSource !== 'pins' && (
+              <span className="rt-hero-hint">Pin lagu favoritmu agar tampil di sini</span>
+            )}
+            <RowChevrons targetRef={heroRef} />
+          </div>
+          <div className="rt-hero-row mm-enter" ref={heroRef}>
+            {heroSongs.map((s, i) => {
+              const plays = s.raw?.play_count ?? s.play_count;
+              return (
+                <div
+                  key={s.id}
+                  className={`rt-hero-card ${i === 0 ? 'rt-hero-lead' : ''}`}
+                  onClick={() => playList(heroSongs, i)}
+                >
+                  <img src={s.cover} alt={s.title} loading={i > 2 ? 'lazy' : undefined} onError={(e) => { e.currentTarget.src = '/images/default-cover.png'; }} />
+                  <span className="rt-hero-rank">#{i + 1}</span>
+                  {heroSource === 'pins' ? (
+                    <span className="rt-hero-top-right">
+                      <span className="rt-hero-pill rt-hero-pill-pin"><Pin size={11} /> Pinned</span>
+                      <button
+                        className="rt-hero-unpin" title="Lepas dari hero"
+                        onClick={(e) => { e.stopPropagation(); togglePin(s); }}
+                      >
+                        <PinOff size={13} />
+                      </button>
+                    </span>
+                  ) : heroSource === 'most' && plays != null ? (
+                    <span className="rt-hero-pill"><Flame size={11} /> {plays} plays</span>
+                  ) : null}
+                  {i === 0 ? (
+                    <div className="rt-hero-info">
+                      <div style={{ minWidth: 0 }}>
+                        <div className="rt-hero-title">{s.title}</div>
+                        <div className="rt-hero-artist">{s.artist}</div>
+                      </div>
+                      <button
+                        className="rt-play-dim"
+                        style={{ flexShrink: 0 }}
+                        onClick={(e) => { e.stopPropagation(); playList(heroSongs, 0); }}
+                        title="Play"
+                      >
+                        <Play size={20} style={{ marginLeft: 2 }} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="rt-hero-mini">
+                      <div className="rt-hero-mini-title">{s.title}</div>
+                      <div className="rt-hero-mini-artist">{s.artist}</div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* ===== categories ===== */}
@@ -290,7 +386,7 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
                 {moodTracks.map((t, i) => (
                   <SongCard
                     key={t.id} song={t} onPlay={() => playList(moodTracks, i)}
-                    action={<button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(t.id); }} title="Save to playlist"><Plus size={14} /></button>}
+                    action={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{pinBtn(t)}<button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(t.id); }} title="Save to playlist"><Plus size={14} /></button></span>}
                   />
                 ))}
               </div>
@@ -314,20 +410,26 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
         </>
       )}
 
-      {/* ===== popular songs (API trending, fallback lokal) ===== */}
+      {/* ===== popular songs (per periode: hari ini / minggu ini) ===== */}
       {popularSongs.length > 0 && (
         <>
           <div className="mm-section mm-enter">
             <span>Popular songs</span>
+            <span style={{ display: 'inline-flex', gap: 6, marginLeft: 12 }}>
+              <button className={`mm-chip mm-chip-sm ${popPeriod === 'today' ? 'active' : ''}`} onClick={() => setPopPeriod('today')}>Today</button>
+              <button className={`mm-chip mm-chip-sm ${popPeriod === 'week' ? 'active' : ''}`} onClick={() => setPopPeriod('week')}>This week</button>
+            </span>
+            {trendState === 'loading' && <span className="rt-hero-hint">Updating…</span>}
             <RowChevrons targetRef={popularRef} />
           </div>
           <div className="rt-row mm-enter" ref={popularRef}>
             {popularSongs.map((s, i) => {
               const isOnline = String(s.id).startsWith('yt-');
               const liked = p.likedIds.has(String(s.id));
-              return (
+              const plays = s.raw?.period_plays ?? s.period_plays;
+              const card = (
                 <SongCard
-                  key={`${s.id}-${i}`} song={s} onPlay={() => playList(popularSongs, i)}
+                  song={s} onPlay={() => playList(popularSongs, i)}
                   action={isOnline ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                       <button
@@ -342,9 +444,20 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
                       </button>
                     </span>
                   ) : (
-                    <button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(s.id); }} title="Save to playlist"><Plus size={14} /></button>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {pinBtn(s)}
+                      <button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(s.id); }} title="Save to playlist"><Plus size={14} /></button>
+                    </span>
                   )}
                 />
+              );
+              if (!popularIsPeriod) return <span key={`${s.id}-${i}`} style={{ display: 'contents' }}>{card}</span>;
+              return (
+                <div key={`${s.id}-${i}`} className="rt-pop-wrap">
+                  <span className="rt-pop-rank">#{i + 1}</span>
+                  {plays != null && <span className="rt-pop-plays">{plays} plays</span>}
+                  {card}
+                </div>
               );
             })}
           </div>
@@ -360,9 +473,16 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
             <RowChevrons targetRef={mostRef} />
           </div>
           <div className="rt-row mm-enter" ref={mostRef}>
-            {mostPlayedSongs.map((s, i) => (
-              <SongCard key={`m-${s.id}-${i}`} song={s} onPlay={() => playList(mostPlayedSongs, i)} action={cardPlaylistAction(s)} />
-            ))}
+            {mostPlayedSongs.map((s, i) => {
+              const plays = s.raw?.play_count ?? s.play_count;
+              return (
+                <div key={`m-${s.id}-${i}`} className="rt-pop-wrap">
+                  <span className="rt-pop-rank">#{i + 1}</span>
+                  {plays != null && <span className="rt-pop-plays">{plays} plays</span>}
+                  <SongCard song={s} onPlay={() => playList(mostPlayedSongs, i)} action={cardPlaylistAction(s)} />
+                </div>
+              );
+            })}
           </div>
         </>
       )}
@@ -406,7 +526,7 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
                   key={s.id}
                   song={s}
                   onPlay={() => playList(collection, i)}
-                  action={<button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(s.id); }} title="Save to playlist"><Plus size={14} /></button>}
+                  action={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{pinBtn(s)}<button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(s.id); }} title="Save to playlist"><Plus size={14} /></button></span>}
                 />
               ))}
             </div>

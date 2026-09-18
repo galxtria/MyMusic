@@ -129,7 +129,18 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     setLyricsLoading(true);
     fetchLyrics(current.title, current.artist)
       .then((d) => {
-        if (d.syncedLyrics) setLyrics(parseLrc(d.syncedLyrics));
+        let synced = d.syncedLyrics ? parseLrc(d.syncedLyrics) : [];
+        // Lagu API (YouTube) sering beda versi dengan rekaman studio yang dipakai
+        // LRCLIB (live, intro tambahan, speed berbeda). Tolak timestamp yang durasi
+        // lagunya beda jauh dari audio yang diputar, pakai teks biasa saja.
+        try {
+          const elDur = audioRef.current?.duration;
+          const libDur = Number(d.duration);
+          if (synced.length > 0 && isFinite(elDur) && elDur > 0 && isFinite(libDur) && libDur > 0) {
+            if (Math.abs(libDur - elDur) > 20) synced = [];
+          }
+        } catch {}
+        if (synced.length > 0) setLyrics(synced);
         else if (d.plainLyrics) setLyrics(d.plainLyrics.split('\n').filter(Boolean).map((txt, i) => ({ t: i * 5, txt })));
         else setLyrics([]);
       })
@@ -248,20 +259,67 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     };
   }, [persistState]);
 
+  // Geser timing lirik per lagu (detik, + = lirik dimajukan). Audio YouTube
+  // sering beda versi dengan timestamp LRCLIB, jadi user bisa kalibrasi manual
+  // sekali dan tersimpan di browser.
+  const OFFSET_KEY = 'mm-lyrics-offset-v1';
   // Ganti identitas item antrean (mis. lagu online yt-xxx -> id DB numerik
   // setelah dibuatkan stub) tanpa mengganggu pemutaran.
   const relinkQueueItem = useCallback((oldId, patch) => {
     setQueue((q) => q.map((s) => (String(s.id) === String(oldId) ? { ...s, ...patch } : s)));
+    // Id lagu online berubah (yt-xxx -> id numerik): pindahkan offset lirik tersimpan.
+    if (patch && patch.id != null && String(patch.id) !== String(oldId)) {
+      try {
+        const all = JSON.parse(localStorage.getItem(OFFSET_KEY) || '{}');
+        if (all[String(oldId)] !== undefined && all[String(patch.id)] === undefined) {
+          all[String(patch.id)] = all[String(oldId)];
+          localStorage.setItem(OFFSET_KEY, JSON.stringify(all));
+        }
+      } catch {}
+    }
   }, []);
+
+  // Geser timing lirik per lagu (detik, + = lirik dimajukan). Audio YouTube
+  // sering beda versi dengan timestamp LRCLIB, jadi user bisa kalibrasi manual
+  // sekali dan tersimpan di browser.
+  const [lyricsOffset, setLyricsOffset] = useState(0);
+  useEffect(() => {
+    if (!current) return;
+    try {
+      const all = JSON.parse(localStorage.getItem(OFFSET_KEY) || '{}');
+      const v = Number(all[String(current.id)]);
+      setLyricsOffset(Number.isFinite(v) ? Math.max(-10, Math.min(10, v)) : 0);
+    } catch { setLyricsOffset(0); }
+  }, [current]);
+  const shiftLyricsOffset = useCallback((delta) => {
+    setLyricsOffset((prev) => {
+      const n = Math.max(-10, Math.min(10, Math.round((prev + delta) * 10) / 10));
+      try {
+        const all = JSON.parse(localStorage.getItem(OFFSET_KEY) || '{}');
+        all[String(current?.id ?? '')] = n;
+        localStorage.setItem(OFFSET_KEY, JSON.stringify(all));
+      } catch {}
+      return n;
+    });
+  }, [current]);
+  const resetLyricsOffset = useCallback(() => {
+    try {
+      const all = JSON.parse(localStorage.getItem(OFFSET_KEY) || '{}');
+      delete all[String(current?.id ?? '')];
+      localStorage.setItem(OFFSET_KEY, JSON.stringify(all));
+    } catch {}
+    setLyricsOffset(0);
+  }, [current]);
 
   const value = useMemo(() => ({
     audioRef, queue, index, current, isPlaying, setIsPlaying,
     shuffle, setShuffle, repeat, setRepeat,
     progress, setProgress, duration, setDuration, currentTime, setCurrentTime,
     volume, setVolume, toast, showToast, lyricsOpen, setLyricsOpen,
-    lyrics, lyricsLoading, playlistModalSong, setPlaylistModalSong,
+    lyrics, lyricsLoading, lyricsOffset, shiftLyricsOffset, resetLyricsOffset,
+    playlistModalSong, setPlaylistModalSong,
     likedIds, isFavorite, markLiked, relinkQueueItem, consumeResumeTime, loadQueue, playAt, next, prev, toggle,
-  }), [queue, index, current, isPlaying, shuffle, repeat, progress, duration, currentTime, volume, toast, showToast, lyricsOpen, lyrics, lyricsLoading, playlistModalSong, likedIds, isFavorite, markLiked, relinkQueueItem, consumeResumeTime, loadQueue, playAt, next, prev, toggle]);
+  }), [queue, index, current, isPlaying, shuffle, repeat, progress, duration, currentTime, volume, toast, showToast, lyricsOpen, lyrics, lyricsLoading, lyricsOffset, shiftLyricsOffset, resetLyricsOffset, playlistModalSong, likedIds, isFavorite, markLiked, relinkQueueItem, consumeResumeTime, loadQueue, playAt, next, prev, toggle]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
