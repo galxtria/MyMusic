@@ -8,7 +8,7 @@ $me = auth()->user();
 $props = [
     'user' => $me ? ['id' => $me->id, 'name' => $me->name, 'email' => $me->email, 'role' => $me->role] : null,
     'isAdmin' => true,
-    'song' => $song,
+    'song' => $song->makeVisible('lyrics'),
     'errors' => $errors->toArray(),
     'favoriteIds' => [],
     'playlists' => [],

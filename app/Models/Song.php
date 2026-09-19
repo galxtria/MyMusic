@@ -32,6 +32,13 @@ class Song extends Model
     ];
 
     /**
+     * Lirik disembunyikan dari serialisasi default: ukurannya besar (2-6KB/lagu)
+     * dan membuat HTML data-props membengkak (homepage 243KB). Lirik diambil
+     * on-demand via /api/lyrics/{song} saat lagu diputar.
+     */
+    protected $hidden = ['lyrics'];
+
+    /**
      * URL gambar cover.
      * Prioritas: artwork_url (iTunes) → album_art (lokal)
      */

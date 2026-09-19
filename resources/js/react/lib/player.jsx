@@ -248,20 +248,52 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     try { localStorage.setItem('mm-volume', String(volume)); } catch {}
   }, [volume]);
 
-  // Favorite status + lyrics per track
+  // Favorite status + lyrics per track.
+  // Urutan lirik: bawaan antrean -> /api/lyrics/{id} (DB, sekali per lagu)
+  // -> lrclib live. Hasil DB di-cache ke item antrean agar tak fetch ulang.
+  const dbLyricsFetched = useRef(new Set());
   useEffect(() => {
     if (!current) return;
     setIsFavorite(likedIds.has(String(current.id)));
-    if (current.id != null && String(current.id).startsWith('yt-') === false && !Number.isNaN(Number(current.id))) {
+    const numericId = current.id != null && String(current.id).startsWith('yt-') === false && !Number.isNaN(Number(current.id))
+      ? Number(current.id) : null;
+    if (numericId != null) {
       checkFavorite(current.id).then((d) => setIsFavorite(!!d.is_favorite)).catch(() => {});
     }
-    const fromDb = parseLrc(current.lyrics || '');
-    if (fromDb.length > 0) {
-      setLyrics(fromDb);
+    const fromQueue = parseLrc(current.lyrics || '');
+    if (fromQueue.length > 0) {
+      setLyrics(fromQueue);
+      return;
+    }
+    if (numericId != null && !dbLyricsFetched.current.has(String(numericId))) {
+      dbLyricsFetched.current.add(String(numericId));
+      setLyricsLoading(true);
+      fetch(`/api/lyrics/${numericId}`, { headers: { Accept: 'application/json' } })
+        .then((r) => r.json())
+        .then((d) => {
+          const parsed = parseLrc(d.lyrics || '');
+          if (parsed.length > 0) {
+            setLyrics(parsed);
+            relinkQueueItem(current.id, { lyrics: d.lyrics });
+            return true;
+          }
+          return false;
+        })
+        .catch(() => false)
+        .then((hit) => {
+          if (hit) {
+            setLyricsLoading(false);
+            return;
+          }
+          fetchLiveLyrics();
+        });
       return;
     }
     setLyricsLoading(true);
-    fetchLyrics(current.title, current.artist)
+    fetchLiveLyrics();
+
+    function fetchLiveLyrics() {
+      fetchLyrics(current.title, current.artist)
       .then((d) => {
         let synced = d.syncedLyrics ? parseLrc(d.syncedLyrics) : [];
         try {
@@ -277,6 +309,7 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
       })
       .catch(() => setLyrics([]))
       .finally(() => setLyricsLoading(false));
+    }
   }, [current, likedIds]);
 
   const markLiked = useCallback((songId, liked) => {

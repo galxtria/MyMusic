@@ -113,6 +113,13 @@ class SongController extends Controller
         return response()->json(Song::latest()->paginate(16));
     }
 
+    // 1c. LIRIK ON-DEMAND — diambil player saat lagu mulai diputar agar
+    // payload halaman tetap ramping (kolom lyrics di-hidden dari toArray).
+    public function lyricsJson(Song $song) {
+        // $hidden menyembunyikan lyrics: akses atribut langsung, bukan toArray.
+        return response()->json(['lyrics' => $song->getAttribute('lyrics') ?? '']);
+    }
+
     // 1c. TRACK PLAY — catat play count + riwayat user (dipanggil player tiap ganti lagu).
     public function trackPlay(Request $request, $songId)
     {

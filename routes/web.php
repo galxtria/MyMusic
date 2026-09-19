@@ -26,6 +26,7 @@ Route::middleware(['auth'])->group(function () {
     // Core User Routes
     Route::get('/home', [SongController::class, 'index'])->name('home');
     Route::get('/api/collection', [SongController::class, 'collectionJson'])->name('api.collection');
+    Route::get('/api/lyrics/{song}', [SongController::class, 'lyricsJson'])->name('api.lyrics');
     Route::get('/search', [SongController::class, 'search'])->name('search');
     Route::get('/library', [SongController::class, 'library'])->name('library');
     Route::get('/create', [SongController::class, 'create'])->name('create');
