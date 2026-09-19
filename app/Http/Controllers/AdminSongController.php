@@ -66,10 +66,14 @@ class AdminSongController extends Controller
             $request->artist_photo->move(public_path('images/artist'), $artistImageName);
         }
 
+        // Samakan ejaan artis dengan varian yang sudah ada (CORTIS -> Cortis)
+        // agar tidak tercipta halaman artis ganda.
+        $artist = \App\Support\ArtistNames::canonical($request->artist);
+
         // Simpan data ke Database
         Song::create([
             'title' => $request->title,
-            'artist' => $request->artist,
+            'artist' => $artist,
             'genre'  => $request->genre,
             'duration' => $request->duration,
             'album_art' => '/images/' . $imageName,
@@ -101,7 +105,7 @@ class AdminSongController extends Controller
         // Data dasar yang akan diupdate
         $data = [
             'title' => $request->title,
-            'artist' => trim($request->artist),
+            'artist' => \App\Support\ArtistNames::canonical(trim($request->artist)),
             'genre' => $request->genre, // <--- PENTING: Tangkap input genre dari form
             'duration' => $request->duration,
             'lyrics' => $request->lyrics,

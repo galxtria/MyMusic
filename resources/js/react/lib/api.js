@@ -6,11 +6,15 @@ export function songSrc(s) {
   if (!s) return '';
   if (s.src) return s.src;
   if (s.preview_url) return s.preview_url;
-  if (s.youtube_id) return `/api/stream-audio?id=${encodeURIComponent(s.youtube_id)}`;
+  // File lokal diutamakan: lagu hasil import punya file_path DAN youtube_id,
+  // dan file lokal selalu bisa diputar sedangkan stream-audio (yt-dlp) flaky.
   const fp = s.file_path ?? '';
-  if (!fp) return '';
-  const base = fp.split('/').pop();
-  return `/stream-music/${encodeURIComponent(base)}`;
+  if (fp) {
+    const base = fp.split('/').pop();
+    return `/stream-music/${encodeURIComponent(base)}`;
+  }
+  if (s.youtube_id) return `/api/stream-audio?id=${encodeURIComponent(s.youtube_id)}`;
+  return '';
 }
 
 export function songCover(s) {
@@ -128,4 +132,59 @@ export function formatTime(s) {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
   return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+}
+
+export async function togglePlaylistPublic(playlistId) {
+  const res = await fetch(`/playlist/${playlistId}/toggle-public`, {
+    method: 'POST',
+    headers: { 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+  });
+  return jsonOrThrow(res);
+}
+
+export async function forkPlaylist(playlistId) {
+  const res = await fetch(`/playlist/${playlistId}/fork`, {
+    method: 'POST',
+    headers: { 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+  });
+  return res;
+}
+
+export async function fetchRadio(songId) {
+  const res = await fetch(`/api/radio/${songId}`, { headers: { Accept: 'application/json' } });
+  return jsonOrThrow(res);
+}
+
+export async function fetchRecommendations() {
+  const res = await fetch('/api/recommendations', { headers: { Accept: 'application/json' } });
+  return jsonOrThrow(res);
+}
+
+export async function toggleArtistFollow(artistName) {
+  const res = await fetch(`/artist/${encodeURIComponent(artistName)}/follow`, {
+    method: 'POST',
+    headers: { 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+  });
+  return jsonOrThrow(res);
+}
+
+export function copyLink(url, showToast) {
+  const done = () => showToast && showToast('Link copied to clipboard');
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, showToast));
+  } else fallbackCopy(url, showToast);
+}
+
+function fallbackCopy(url, showToast) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast && showToast('Link copied to clipboard');
+  } catch {
+    showToast && showToast(url);
+  }
 }

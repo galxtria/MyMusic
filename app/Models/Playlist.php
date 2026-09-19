@@ -15,7 +15,14 @@ class Playlist extends Model
     protected $fillable = [
         'user_id',
         'name',
+        'description',
         'cover_path',
+        'is_public',
+        'share_token',
+    ];
+
+    protected $casts = [
+        'is_public' => 'boolean',
     ];
 
     /**

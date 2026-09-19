@@ -30,6 +30,9 @@ export default function CreatePlaylist({ errors = {} }) {
             {errors.name && <div style={{ color: '#f87171', fontSize: '0.8rem', marginBottom: 12 }}>{errors.name}</div>}
             <label className="mm-label" style={{ marginTop: 18 }}>DESCRIPTION (OPTIONAL)</label>
             <textarea name="description" rows={3} placeholder="Give your playlist a cool description..." className="mm-input" style={{ padding: 14 }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: '0.85rem', color: 'var(--mm-dim)', cursor: 'pointer' }}>
+              <input type="checkbox" name="is_public" value="1" /> Make public (shareable link)
+            </label>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 26 }}>
               <a href="/library" className="mm-btn-ghost"><ArrowLeft size={15} /> Back to library</a>
               <button type="submit" className="mm-btn-primary"><Check size={16} /> Confirm and save</button>
@@ -61,6 +64,11 @@ export function EditPlaylist({ playlist, errors = {} }) {
             <label className="mm-label">PLAYLIST NAME</label>
             <input name="name" required defaultValue={playlist.name} style={{ width: '100%', background: 'transparent', border: 0, borderBottom: '2px solid var(--mm-line)', color: '#fff', fontSize: '2rem', fontWeight: 800, padding: '8px 0 14px', outline: 'none', marginBottom: 8 }} />
             {errors.name && <div style={{ color: '#f87171', fontSize: '0.8rem', marginBottom: 12 }}>{errors.name}</div>}
+            <label className="mm-label" style={{ marginTop: 14 }}>DESCRIPTION (OPTIONAL)</label>
+            <textarea name="description" rows={3} defaultValue={playlist.description || ''} placeholder="Give your playlist a cool description..." className="mm-input" style={{ padding: 14 }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: '0.85rem', color: 'var(--mm-dim)', cursor: 'pointer' }}>
+              <input type="checkbox" name="is_public" value="1" defaultChecked={!!playlist.is_public} /> Make public (shareable link)
+            </label>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 26 }}>
               <a href="/library" className="mm-btn-ghost"><ArrowLeft size={15} /> Back to library</a>
               <button type="submit" className="mm-btn-primary"><Check size={16} /> Save changes</button>

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ChevronDown, ChevronRight, Disc3, Download, FolderPlus, Heart, House, ListMusic, LogOut, Menu,
-  Mic, Pause, Play, Repeat, Settings, Shuffle, SkipBack, SkipForward, Volume2, X,
+  ChevronDown, ChevronRight, ChevronUp, Disc3, Download, FolderPlus, Heart, House, ListMusic, LogOut, Menu,
+  Mic, Pause, Play, Radio, Repeat, Repeat1, Settings, Shuffle, SkipBack, SkipForward, Volume2, X,
+  Timer, Share2, UserRound, Trash2, Clock,
 } from 'lucide-react';
-import { addSongToPlaylist, formatTime, toggleFavorite } from '../lib/api';
+import { addSongToPlaylist, addYouTubeToLibrary, copyLink, formatTime, toggleFavorite } from '../lib/api';
 import { clearPersistedPlayerState, usePlayer } from '../lib/player';
 
 function doLogout(formId) {
@@ -47,6 +48,7 @@ function Sidebar({ page, isAdmin, playlists, open, onClose }) {
         <NavItem href="/home" active={page === 'home'} icon={House} label="Home" />
         <NavItem href="/search" active={page === 'search'} icon={LayoutGridIcon} label="Categories" />
         <NavItem href="/library" active={page === 'library' || page === 'create'} icon={ListMusic} label="Your Library" />
+        <NavItem href="/profile" active={page === 'profile'} icon={UserRound} label="Profile" />
 
         <button className="mm-nav-link" style={{ width: '100%', background: 'none', border: 0, cursor: 'pointer' }} onClick={() => setPlOpen((v) => !v)}>
           <FolderPlus size={19} />
@@ -75,7 +77,9 @@ function Sidebar({ page, isAdmin, playlists, open, onClose }) {
         {isAdmin && (
           <>
             <div className="mm-nav-label">ADMIN</div>
-            <NavItem href="/admin/songs" active={page === 'admin'} icon={Settings} label="Manage Songs" />
+            <NavItem href="/admin" active={page === 'admin'} icon={Settings} label="Dashboard" />
+            <NavItem href="/admin/songs" active={page === 'admin-songs'} icon={Settings} label="Manage Songs" />
+            <NavItem href="/admin/users" active={page === 'admin-users'} icon={Settings} label="Manage Users" />
             <NavItem href="/admin/tools/import" active={page === 'admin-import'} icon={Download} label="Import Music" />
           </>
         )}
@@ -113,6 +117,7 @@ function TopBar({ user, isAdmin, page, onMenu }) {
   const showProfile = user
     ? (isAdmin ? String(page || '').startsWith('admin') : page === 'home')
     : false;
+  const avatarUrl = user?.avatar_url || '';
   return (
     <div className="mm-topbar">
       <button className="mm-icon-btn" onClick={onMenu} id="mm-menu-btn" title="Open menu">
@@ -123,7 +128,9 @@ function TopBar({ user, isAdmin, page, onMenu }) {
           showProfile ? (
             <div style={{ position: 'relative' }}>
               <button className="mm-user-chip" onClick={() => setOpen((v) => !v)}>
-                <span className="mm-avatar">{(user.name || 'U').slice(0, 1).toUpperCase()}</span>
+                {avatarUrl
+                  ? <img src={avatarUrl} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                  : <span className="mm-avatar">{(user.name || 'U').slice(0, 1).toUpperCase()}</span>}
                 <span style={{ textAlign: 'left', lineHeight: 1.25 }}>
                   <span style={{ display: 'block' }}>{user.name}</span>
                   <span className="mm-premium-tag">Premium</span>
@@ -131,7 +138,9 @@ function TopBar({ user, isAdmin, page, onMenu }) {
               </button>
               {open && (
                 <div className="mm-modal" style={{ position: 'absolute', right: 0, top: 52, minWidth: 220, padding: 8, zIndex: 80 }}>
+                  {isAdmin && <a href="/admin" className="mm-nav-link"><Settings size={16} /> Admin Dashboard</a>}
                   {isAdmin && <a href="/admin/songs" className="mm-nav-link"><Settings size={16} /> Admin Panel</a>}
+                  <a href="/profile" className="mm-nav-link"><UserRound size={16} /> Profile</a>
                   <a href="/library" className="mm-nav-link"><ListMusic size={16} /> Your Library</a>
                   <a
                     href="/logout"
@@ -156,9 +165,102 @@ function TopBar({ user, isAdmin, page, onMenu }) {
   );
 }
 
+function RepeatButton() {
+  const p = usePlayer();
+  const Icon = p.repeatMode === 'one' ? Repeat1 : Repeat;
+  const label = p.repeatMode === 'off' ? 'Repeat off' : p.repeatMode === 'all' ? 'Repeat all' : 'Repeat one';
+  return (
+    <button onClick={p.cycleRepeatMode} title={`${label} (click to change)`} style={ghostBtn}>
+      <Icon size={16} color={p.repeatMode !== 'off' ? '#fff' : undefined} opacity={p.repeatMode !== 'off' ? 1 : 0.55} />
+    </button>
+  );
+}
+
+function SleepTimerButton() {
+  const p = usePlayer();
+  const [open, setOpen] = useState(false);
+  return (
+    <span style={{ position: 'relative' }}>
+      <button onClick={() => setOpen((v) => !v)} title="Sleep timer" style={{ ...ghostBtn, ...(p.sleepLeft ? { color: '#fff' } : {}) }}>
+        <Timer size={16} opacity={p.sleepLeft ? 1 : 0.55} />
+        {p.sleepLeft ? <span style={{ fontSize: '0.62rem', fontWeight: 800, marginLeft: 3 }}>{p.sleepLeft}m</span> : null}
+      </button>
+      {open && (
+        <span className="mm-modal" style={{ position: 'absolute', bottom: 34, right: 0, minWidth: 150, padding: 6, zIndex: 80, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {[15, 30, 60].map((m) => (
+            <button key={m} className="mm-nav-link" style={{ background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }} onClick={() => { p.setSleepTimer(m); setOpen(false); }}>
+              <Clock size={14} /> {m} minutes
+            </button>
+          ))}
+          <button className="mm-nav-link" style={{ background: 'none', border: 0, cursor: 'pointer', textAlign: 'left', color: '#fb7185' }} onClick={() => { p.setSleepTimer(null); setOpen(false); }}>
+            <X size={14} /> Turn off
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function QueueDrawer() {
+  const p = usePlayer();
+  if (!p.queueOpen) return null;
+  return (
+    <div className="mm-modal-backdrop" onClick={() => p.setQueueOpen(false)}>
+      <div className="mm-modal" style={{ position: 'fixed', right: 14, bottom: 110, top: 70, width: 'min(380px, calc(100vw - 28px))', maxHeight: 'calc(100vh - 140px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', zIndex: 90 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <h3 style={{ margin: 0, fontSize: '1rem' }}>Queue ({p.queue.length})</h3>
+          <span style={{ display: 'flex', gap: 6 }}>
+            <button className="mm-icon-btn" style={{ width: 32, height: 32 }} onClick={p.clearQueue} title="Clear queue"><Trash2 size={14} /></button>
+            <button className="mm-icon-btn" style={{ width: 32, height: 32 }} onClick={() => p.setQueueOpen(false)} title="Close"><X size={14} /></button>
+          </span>
+        </div>
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+          {p.queue.length === 0 && <p style={{ color: 'var(--mm-dim)', fontSize: '0.85rem' }}>Queue is empty. Play something!</p>}
+          {p.queue.map((s, i) => (
+            <div key={`${s.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 10, background: i === p.index ? 'var(--mm-accent-soft)' : 'transparent', cursor: 'pointer' }} onClick={() => p.playAt(i)}>
+              <img src={s.cover} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} onError={(e) => { e.currentTarget.src = '/images/default-cover.png'; }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</div>
+                <div style={{ color: 'var(--mm-dim)', fontSize: '0.72rem' }}>{s.artist}</div>
+              </div>
+              {i === p.index && p.isPlaying
+                ? <span style={{ fontSize: '0.65rem', color: 'var(--mm-accent)', fontWeight: 800 }}>PLAYING</span>
+                : null}
+              <button title="Move up" style={ghostBtn} onClick={(e) => { e.stopPropagation(); p.moveQueueItem(i, i - 1); }}><ChevronUp size={14} /></button>
+              <button title="Move down" style={ghostBtn} onClick={(e) => { e.stopPropagation(); p.moveQueueItem(i, i + 1); }}><ChevronDown size={14} /></button>
+              <button title="Remove" style={ghostBtn} onClick={(e) => { e.stopPropagation(); p.removeFromQueue(i); }}><X size={14} /></button>
+            </div>
+          ))}
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '0.8rem', color: 'var(--mm-dim)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={p.autoplay} onChange={p.toggleAutoplay} /> Radio autoplay when queue ends
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function PlayerBar() {
   const p = usePlayer();
   const { current } = p;
+
+  // Keyboard shortcuts: Space toggle, arrows seek/volume, M mute, N/P next/prev, Q queue
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (['input', 'textarea', 'select'].includes(tag)) return;
+      if (e.code === 'Space') { e.preventDefault(); p.toggle(); }
+      else if (e.key === 'ArrowRight' && !e.metaKey && !e.ctrlKey) { const el = p.audioRef.current; if (el) el.currentTime = Math.min(el.duration || 0, el.currentTime + 10); }
+      else if (e.key === 'ArrowLeft' && !e.metaKey && !e.ctrlKey) { const el = p.audioRef.current; if (el) el.currentTime = Math.max(0, el.currentTime - 10); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); p.setVolume(Math.min(1, p.volume + 0.05)); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); p.setVolume(Math.max(0, p.volume - 0.05)); }
+      else if (e.key === 'm' || e.key === 'M') { p.setVolume(p.volume > 0 ? 0 : 0.7); }
+      else if (e.key === 'n' || e.key === 'N') { p.next(); }
+      else if (e.key === 'q' || e.key === 'Q') { p.setQueueOpen((v) => !v); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [p]);
 
   const audioEl = (
     <audio
@@ -179,7 +281,7 @@ function PlayerBar() {
             try { el.currentTime = rt; } catch {}
           }
         }}
-      onEnded={() => { if (p.repeat) { const el = p.audioRef.current; if (el) { el.currentTime = 0; el.play().catch(() => {}); } } else p.next(); }}
+      onEnded={p.handleEnded}
       onPlay={() => p.setIsPlaying(true)}
       onPause={() => p.setIsPlaying(false)}
       style={{ display: 'none' }}
@@ -238,13 +340,48 @@ function PlayerBar() {
 
       <div className="mm-pb-right mm-hide-mobile">
         {current && <LikeButton songId={current.id} size={17} />}
+        <button
+          onClick={async () => {
+            if (!current) return;
+            const id = current.id;
+            // Lagu library: link permanen /s/{id} (selalu ketemu).
+            if (id != null && !String(id).startsWith('yt-') && !Number.isNaN(Number(id))) {
+              copyLink(`${window.location.origin}/s/${id}`, p.showToast);
+              return;
+            }
+            // Lagu online: buatkan baris DB dulu agar link-nya permanen.
+            try {
+              const raw = current.raw;
+              const piped = raw && raw.url ? raw : raw && raw.raw;
+              if (!piped || !piped.url) {
+                p.showToast('Cannot share this track yet');
+                return;
+              }
+              const d = await addYouTubeToLibrary(piped);
+              const songId = d.song?.id;
+              if (!songId) throw new Error('no id');
+              p.relinkQueueItem(String(id), { id: songId });
+              copyLink(`${window.location.origin}/s/${songId}`, p.showToast);
+            } catch {
+              p.showToast('Could not create share link');
+            }
+          }}
+          title="Share this song (copy link)" style={ghostBtn}
+        >
+          <Share2 size={16} opacity={0.55} />
+        </button>
         <button onClick={() => p.setShuffle((v) => !v)} title="Shuffle" style={ghostBtn}>
           <Shuffle size={16} color={p.shuffle ? '#fff' : undefined} opacity={p.shuffle ? 1 : 0.55} />
         </button>
-        <button onClick={() => p.setRepeat((v) => !v)} title="Repeat" style={ghostBtn}>
-          <Repeat size={16} color={p.repeat ? '#fff' : undefined} opacity={p.repeat ? 1 : 0.55} />
-        </button>
+        <RepeatButton />
         <button onClick={() => current && p.setLyricsOpen(true)} title="Lyrics" style={ghostBtn}><Mic size={16} /></button>
+        <button onClick={p.toggleAutoplay} title={`Radio autoplay ${p.autoplay ? 'on' : 'off'}`} style={ghostBtn}>
+          <Radio size={16} color={p.autoplay ? '#fff' : undefined} opacity={p.autoplay ? 1 : 0.55} />
+        </button>
+        <SleepTimerButton />
+        <button onClick={() => p.setQueueOpen((v) => !v)} title="Queue (Q)" style={ghostBtn}>
+          <ListMusic size={16} color={p.queueOpen ? '#fff' : undefined} opacity={p.queueOpen ? 1 : 0.55} />
+        </button>
         <Volume2 size={16} style={{ color: 'var(--mm-faint)' }} />
         <input type="range" min={0} max={1} step={0.01} value={p.volume} className="mm-range" style={{ width: 72 }} onChange={(e) => p.setVolume(Number(e.target.value))} />
       </div>
@@ -357,8 +494,8 @@ function LyricsOverlay() {
               {p.isPlaying ? <Pause size={34} /> : <Play size={34} style={{ marginLeft: 3 }} />}
             </button>
             <button className="mm-lp-btn" onClick={p.next} title="Next"><SkipForward size={26} /></button>
-            <button className={`mm-lp-btn ${p.repeat ? 'on' : 'dim'}`} onClick={() => p.setRepeat((v) => !v)} title="Repeat">
-              <Repeat size={17} />
+            <button className={`mm-lp-btn ${p.repeatMode !== 'off' ? 'on' : 'dim'}`} onClick={p.cycleRepeatMode} title={`Repeat: ${p.repeatMode}`}>
+              {p.repeatMode === 'one' ? <Repeat1 size={17} /> : <Repeat size={17} />}
             </button>
           </div>
           <div className="mm-lp-vol">
@@ -471,6 +608,7 @@ export default function AppShell({ page, user, isAdmin, playlists, children }) {
         </div>
       </div>
       <LyricsOverlay />
+      <QueueDrawer />
       <PlaylistModal playlists={playlists} />
       {p.toast && (
         <div className="mm-toast">

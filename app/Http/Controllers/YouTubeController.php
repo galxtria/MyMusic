@@ -66,27 +66,50 @@ class YouTubeController extends Controller
 
         $cacheKey = "ytdlp_stream_" . md5($query);
 
-        $streamUrl = Cache::remember($cacheKey, 3600, function () use ($query) {
-            $binary = base_path('yt-dlp.exe');
-            if (!file_exists($binary)) {
-                return null;
+        // Jangan cache hasil null: kegagalan sesaat yt-dlp tidak boleh
+        // bikin lagu 404 selama 1 jam. Hanya URL valid yang di-cache.
+        $streamUrl = Cache::get($cacheKey);
+        if (!$streamUrl) {
+            $streamUrl = $this->resolveStreamUrl($query);
+            if ($streamUrl && filter_var($streamUrl, FILTER_VALIDATE_URL)) {
+                Cache::put($cacheKey, $streamUrl, 3600);
+            } else {
+                $streamUrl = null;
             }
-            // Use double quotes for the binary path and arguments to ensure Windows compatibility
-            $cmd = '"' . $binary . '" --no-warnings -f "bestaudio[ext=m4a]" --get-url ' . escapeshellarg($query) . ' 2> NUL';
-            $output = shell_exec($cmd);
-            
-            if ($output) {
-                $lines = array_filter(explode("\n", trim($output)));
-                return end($lines); 
-            }
-            return null;
-        });
+        }
 
         if ($streamUrl && filter_var($streamUrl, FILTER_VALIDATE_URL)) {
             return redirect($streamUrl);
         }
 
         abort(404, 'Audio stream not found');
+    }
+
+    /**
+     * Jalankan yt-dlp --get-url. Coba format m4a dulu, fallback ke bestaudio/best.
+     * Return URL atau null. Tidak pernah throw.
+     */
+    private function resolveStreamUrl(string $query): ?string
+    {
+        $binary = base_path('yt-dlp.exe');
+        if (!file_exists($binary)) {
+            return null;
+        }
+        foreach (['bestaudio[ext=m4a]/bestaudio/best', 'best'] as $format) {
+            try {
+                // Use double quotes for the binary path and arguments to ensure Windows compatibility
+                $cmd = '"' . $binary . '" --no-warnings -f ' . escapeshellarg($format) . ' --get-url ' . escapeshellarg($query) . ' 2> NUL';
+                $output = shell_exec($cmd);
+                if ($output) {
+                    $lines = array_filter(explode("\n", trim($output)));
+                    $url = end($lines);
+                    if ($url && filter_var($url, FILTER_VALIDATE_URL)) return $url;
+                }
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+        return null;
     }
 
     /**
@@ -278,11 +301,18 @@ class YouTubeController extends Controller
         $song = Song::where('youtube_id', $request->videoId)->first();
 
         if (!$song) {
+            // Samakan ejaan artis dengan yang sudah ada agar tak dobel (CORTIS -> Cortis).
+            $artist = \App\Support\ArtistNames::canonical($request->uploaderName);
             $song = Song::create([
                 'title' => $request->title,
-                'artist' => $request->uploaderName,
+                'artist' => $artist,
                 'youtube_id' => $request->videoId,
                 'artwork_url' => $request->thumbnail,
+                // Stub lagu online belum punya file lokal: isi fallback agar
+                // lolos kolom NOT NULL (MySQL strict) dan cover tetap tampil.
+                'album_art' => $request->thumbnail,
+                'artist_image' => $request->thumbnail,
+                'file_path' => '',
                 'duration' => $request->duration,
                 'genre' => 'YouTube', // default
             ]);
@@ -382,15 +412,23 @@ class YouTubeController extends Controller
         $secs = (int) $request->duration;
         $duration = floor($secs / 60) . ':' . str_pad($secs % 60, 2, '0', STR_PAD_LEFT);
 
+        // Samakan ejaan artis dengan varian yang sudah ada (anti-duplikat).
+        $canonArtist = \App\Support\ArtistNames::canonical($request->uploaderName);
+
         // Lirik otomatis (LRC + timestamp) dari lrclib — tidak perlu input manual.
         // Gagal/tidak ketemu = lagu tetap diimpor tanpa lirik, tidak error.
         $autoLyrics = $this->fetchSyncedLyrics($request->title, $request->uploaderName, $secs);
+        // Import K-Pop: utamakan teks Korea (Hangul) bila hasil pertama romanized.
+        if (mb_strtolower($request->genre) === 'k-pop' && !\App\Support\LyricsFixer::hasKorean($autoLyrics)) {
+            $better = \App\Support\LyricsFixer::bestSynced($request->title, $canonArtist, $secs, true);
+            if ($better['lrc'] !== '') $autoLyrics = $better['lrc'];
+        }
 
         $song = Song::updateOrCreate(
             ['youtube_id' => $request->videoId],
             [
                 'title' => $request->title,
-                'artist' => $request->uploaderName,
+                'artist' => $canonArtist,
                 'album_art' => $coverRel ?? '/images/default-cover.png',
                 'artist_image' => $coverRel ?? '/images/default_artist.jpg',
                 'file_path' => '/' . $audioRel,

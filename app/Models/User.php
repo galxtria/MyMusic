@@ -22,6 +22,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'avatar_path',
     ];
 
     /**
@@ -59,5 +60,18 @@ class User extends Authenticatable
 
     public function playlists() {
         return $this->hasMany(Playlist::class);
+    }
+
+    public function getAvatarUrlAttribute(): string
+    {
+        if ($this->avatar_path) {
+            return '/' . ltrim($this->avatar_path, '/');
+        }
+        return '';
+    }
+
+    public function followedArtists()
+    {
+        return $this->hasMany(ArtistFollow::class);
     }
 }

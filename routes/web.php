@@ -30,11 +30,24 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/library', [SongController::class, 'library'])->name('library');
     Route::get('/create', [SongController::class, 'create'])->name('create');
 
-    // Route Streaming Musik
+    // --- PROFILE ---
+    Route::get('/profile', [\App\Http\Controllers\ProfileController::class, 'show'])->name('profile');
+    Route::put('/profile', [\App\Http\Controllers\ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile/history', [\App\Http\Controllers\ProfileController::class, 'clearHistory'])->name('profile.history.clear');
+
+    // Route Streaming Musik (file lokal hasil upload / import)
     Route::get('/stream-music/{filename}', [SongController::class, 'stream'])->name('music.stream');
+
+    // Share satu lagu (link permanen per id, tidak bergantung search)
+    Route::get('/s/{song}', [SongController::class, 'sharedSong'])->name('song.share');
 
     // Statistik putar (dipanggil player, fire-and-forget)
     Route::post('/api/play/{songId}', [SongController::class, 'trackPlay'])->name('api.play');
+
+    // Radio + rekomendasi + follow artist
+    Route::get('/api/radio/{songId}', [SongController::class, 'radio'])->name('api.radio');
+    Route::get('/api/recommendations', [SongController::class, 'recommendations'])->name('api.recommendations');
+    Route::post('/artist/{name}/follow', [SongController::class, 'toggleArtistFollow'])->name('artist.follow');
     
     // --- FAVORITE SYSTEM ---
     Route::get('/favorites', [FavoriteController::class, 'index'])->name('favorites');
@@ -60,6 +73,11 @@ Route::middleware(['auth'])->group(function () {
     // Hapus lagu tertentu dari playlist
     Route::delete('/playlist/{playlistId}/song/{songId}', [FavoriteController::class, 'removeSongFromPlaylist'])->name('playlist.removeSong');
 
+    // Share + fork playlist
+    Route::post('/playlist/{id}/toggle-public', [FavoriteController::class, 'togglePublic'])->name('playlist.toggle-public');
+    Route::get('/p/{token}', [FavoriteController::class, 'publicShow'])->name('playlist.public');
+    Route::post('/playlist/{id}/fork', [FavoriteController::class, 'fork'])->name('playlist.fork');
+
     // Artis
     Route::get('/artist/{name}', [SongController::class, 'artist'])->name('artist.show'); 
 
@@ -79,9 +97,7 @@ Route::middleware(['auth'])->group(function () {
 // Perhatikan: .name('admin.') akan menambahkan awalan 'admin.' ke semua rute di dalamnya
 Route::prefix('admin')->middleware(['auth', 'admin'])->name('admin.')->group(function () {
     
-    Route::get('/', function () {
-        return redirect()->route('admin.songs.index');
-    })->name('dashboard');
+    Route::get('/', [\App\Http\Controllers\Admin\DashboardController::class, 'index'])->name('dashboard');
 
     // Resource akan menghasilkan admin.songs.index, admin.songs.create, dst.
     Route::resource('songs', AdminSongController::class);
@@ -90,6 +106,9 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->name('admin.')->group(fun
     Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
     Route::delete('users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
     Route::patch('users/{user}/role', [AdminUserController::class, 'toggleRole'])->name('users.toggle-role');
+
+    // Merge varian ejaan artis ganda (Cortis vs CORTIS)
+    Route::post('artists/merge', [\App\Http\Controllers\Admin\DashboardController::class, 'mergeArtists'])->name('artists.merge');
     
     // Import lagu dari API ke library lokal (audio diunduh ke server)
     Route::get('tools/import', [\App\Http\Controllers\YouTubeController::class, 'importForm'])->name('tools.import');

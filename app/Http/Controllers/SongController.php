@@ -164,7 +164,8 @@ class SongController extends Controller
         $artists = Song::select('artist', 'artist_image', 'album_art')
                     ->where($matchCols)
                     ->get()
-                    ->unique('artist');
+                    ->unique(fn($s) => mb_strtolower($s->artist))
+                    ->values();
 
         $songs = Song::where($matchCols)->get();
 
@@ -190,10 +191,15 @@ class SongController extends Controller
         // AMBIL PLAYLIST ASLI DARI DATABASE
         $playlists = auth()->user()->playlists()->withCount('songs')->get();
 
-        $followedArtists = \App\Models\Song::select('artist', 'album_art', 'artist_image')
-                            ->latest()->get()->unique('artist')->take(6);
+        // Playlist publik milik user lain untuk discovery
+        $publicPlaylists = \App\Models\Playlist::with('user')->withCount('songs')
+            ->where('is_public', true)->where('user_id', '!=', auth()->id())
+            ->latest()->limit(8)->get();
 
-        return view('library', compact('playlists', 'followedArtists'));
+        $followedArtists = \App\Models\Song::select('artist', 'album_art', 'artist_image')
+                            ->latest()->get()->unique(fn($s) => mb_strtolower($s->artist))->take(6)->values();
+
+        return view('library', compact('playlists', 'followedArtists', 'publicPlaylists'));
     }
 
     // 5. CREATE 
@@ -221,17 +227,137 @@ class SongController extends Controller
         return view('create');
     }
 
-    // 6. ARTIST
+    // 5b. SHARE SONG — halaman publik-per-link untuk satu lagu (id numerik DB).
+    // Dibuka dari link share; selalu ketemu selama id-nya valid (tidak
+    // bergantung pada query search yang rapuh seperti sebelumnya).
+    public function sharedSong(Song $song)
+    {
+        return view('song_share', compact('song'));
+    }
+
+    // 6. ARTIST (gabung varian ejaan: Cortis + CORTIS = satu halaman)
     public function artist($name)
     {
-        $artistName = urldecode($name);
-        $songs = Song::where('artist', $artistName)->get();
-        $artistInfo = $songs->first(); 
-
-        if (!$artistInfo) {
+        $key = mb_strtolower(trim(urldecode($name)));
+        $songs = Song::whereRaw('LOWER(artist) = ?', [$key])->get();
+        if ($songs->isEmpty()) {
             return redirect()->route('home');
         }
 
-        return view('artist', compact('songs', 'artistName', 'artistInfo'));
+        // Nama tampil = varian dengan lagu terbanyak (ejaan kanonis).
+        $artistName = $songs->countBy('artist')->sortDesc()->keys()->first();
+        $artistInfo = $songs->firstWhere('artist', $artistName) ?? $songs->first();
+
+        $isFollowing = DB::table('artist_follows')->where('user_id', auth()->id())->where('artist_name', $artistName)->exists();
+        $followers = DB::table('artist_follows')->whereRaw('LOWER(artist_name) = ?', [$key])->count();
+
+        return view('artist', compact('songs', 'artistName', 'artistInfo', 'isFollowing', 'followers'));
+    }
+
+    // 7. RADIO — prioritas: genre sama > artis sama (lintas ejaan) >
+    // genre favorit user > most-played. TIDAK PERNAH tambal acak murni,
+    // agar radio K-Pop tidak kecampuran hiphop/pop.
+    public function radio($songId)
+    {
+        $song = Song::find($songId);
+        if (!$song) return response()->json(['message' => 'Song not found'], 404);
+        $take = 15;
+        $exclude = [$song->id];
+        $tracks = collect();
+        $addMore = function ($q, $ignoreExclude = false) use (&$tracks, &$exclude, $take) {
+            if ($tracks->count() >= $take) return;
+            if (!$ignoreExclude) $q->whereNotIn('id', $exclude);
+            $got = $q->limit($take - $tracks->count())->get();
+            $tracks = $tracks->merge($got);
+            $exclude = array_merge($exclude, $got->pluck('id')->all());
+        };
+
+        // Genre placeholder stub YouTube tidak bermakna — abaikan.
+        $seedGenre = $song->genre && mb_strtolower($song->genre) !== 'youtube' ? $song->genre : null;
+        $artistKey = mb_strtolower($song->artist ?? '');
+
+        // 1) Genre sama (atau artis sama lintas ejaan: Cortis = CORTIS).
+        if ($seedGenre) {
+            $addMore(Song::where(function ($w) use ($seedGenre, $artistKey) {
+                $w->where('genre', $seedGenre)->orWhereRaw('LOWER(artist) = ?', [$artistKey]);
+            })->inRandomOrder());
+        } else {
+            $addMore(Song::whereRaw('LOWER(artist) = ?', [$artistKey])->inRandomOrder());
+        }
+
+        // 2) Genre sama boleh berulang (se-vibe lebih penting daripada anti-repeat
+        // di library kecil) — kecuali lagu yang sedang diputar.
+        if ($seedGenre && $tracks->count() < $take) {
+            $addMore(Song::where('genre', $seedGenre)->where('id', '!=', $song->id)->inRandomOrder(), true);
+        }
+
+        // 3) Genre favorit pendengar (dari likes + riwayat) — tetap se-vibe.
+        if ($tracks->count() < $take) {
+            $topGenres = $this->topGenresFor(auth()->user(), 3);
+            if ($seedGenre && !$topGenres->contains($seedGenre)) {
+                $topGenres->prepend($seedGenre);
+            }
+            if ($topGenres->isNotEmpty()) {
+                $addMore(Song::whereIn('genre', $topGenres->values())->inRandomOrder());
+            }
+        }
+
+        // 4) Terakhir: most-played, lalu terbaru (bukan acak).
+        if ($tracks->count() < $take) {
+            $addMore(Song::where('play_count', '>', 0)->orderByDesc('play_count'));
+        }
+        if ($tracks->count() < $take) {
+            $addMore(Song::latest());
+        }
+
+        return response()->json([
+            'results' => $tracks->values(),
+            'seed_genre' => $seedGenre,
+        ]);
+    }
+
+    /** Genre teratas user dari likes + riwayat (tanpa placeholder YouTube). */
+    private function topGenresFor($user, int $limit = 3)
+    {
+        $liked = $user->favoriteSongs()->pluck('songs.id');
+        $hist = DB::table('song_histories')->where('user_id', $user->id)->pluck('song_id');
+        $ids = $liked->merge($hist)->unique()->values();
+        return Song::select('genre', DB::raw('COUNT(*) as c'))
+            ->when($ids->isNotEmpty(), fn($q) => $q->whereIn('id', $ids))
+            ->whereNotNull('genre')->where('genre', '!=', '')
+            ->whereRaw('LOWER(genre) != ?', ['youtube'])
+            ->groupBy('genre')->orderByDesc('c')->limit($limit)->pluck('genre');
+    }
+
+    // 8. REKOMENDASI — "Because you listened": genre teratas dari likes+history
+    public function recommendations()
+    {
+        $user = auth()->user();
+        $genreCounts = $this->topGenresFor($user, 3);
+        if ($genreCounts->isEmpty()) {
+            return response()->json(['results' => Song::where('play_count', '>', 0)->orderByDesc('play_count')->limit(10)->get()->values(), 'reason' => 'popular']);
+        }
+        $knownIds = $user->favoriteSongs()->pluck('songs.id')
+            ->merge(DB::table('song_histories')->where('user_id', $user->id)->pluck('song_id'))->unique();
+        $results = Song::whereIn('genre', $genreCounts)->whereNotIn('id', $knownIds)
+            ->inRandomOrder()->limit(12)->get();
+        return response()->json(['results' => $results->values(), 'reason' => $genreCounts->values()]);
+    }
+
+    // 9. FOLLOW ARTIST (selalu simpan ejaan kanonis agar tak dobel)
+    public function toggleArtistFollow(Request $request, $name)
+    {
+        $artistName = \App\Support\ArtistNames::canonical(urldecode($name));
+        $key = mb_strtolower($artistName);
+        $exists = DB::table('artist_follows')->where('user_id', auth()->id())->where('artist_name', $artistName)->exists();
+        if ($exists) {
+            DB::table('artist_follows')->where('user_id', auth()->id())->where('artist_name', $artistName)->delete();
+            $status = 'unfollowed';
+        } else {
+            DB::table('artist_follows')->insert(['user_id' => auth()->id(), 'artist_name' => $artistName, 'created_at' => now(), 'updated_at' => now()]);
+            $status = 'followed';
+        }
+        $followers = DB::table('artist_follows')->whereRaw('LOWER(artist_name) = ?', [$key])->count();
+        return response()->json(['status' => $status, 'followers' => $followers, 'artistName' => $artistName]);
     }
 }

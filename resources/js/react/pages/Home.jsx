@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Flame, Heart, History, LoaderCircle, Pin, PinOff, Play, Plus, TrendingUp } from 'lucide-react';
-import { addYouTubeToLibrary, normalizeSong, toggleFavorite, toggleHeroPin } from '../lib/api';
+import { ChevronLeft, ChevronRight, Flame, Heart, History, LoaderCircle, Pin, PinOff, Play, Plus, Radio, Sparkles, TrendingUp } from 'lucide-react';
+import { addYouTubeToLibrary, fetchRadio, fetchRecommendations, normalizeSong, toggleFavorite, toggleHeroPin } from '../lib/api';
 import { usePlayer } from '../lib/player';
 import { EmptyState, SongCard } from '../components/ui';
 
@@ -174,6 +174,45 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
   const trendingSongs = useMemo(() => trending.map(normalizeSong), [trending]);
   const mostPlayedSongs = useMemo(() => mostPlayed.map(normalizeSong), [mostPlayed]);
 
+  // ===== Rekomendasi "Because you listened" =====
+  const [reco, setReco] = useState([]);
+  const [recoReason, setRecoReason] = useState([]);
+  const recoRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchRecommendations()
+      .then((d) => {
+        if (cancelled) return;
+        setReco((d.results || []).map(normalizeSong));
+        setRecoReason(Array.isArray(d.reason) ? d.reason : []);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const playRadioFrom = async (song) => {
+    try {
+      // Lagu online (yt-xxx): buatkan baris DB dulu agar dapat id permanen.
+      let songId = song?.id;
+      if (songId == null) return;
+      if (String(songId).startsWith('yt-')) {
+        songId = await ensureOnlineStub(song);
+        p.relinkQueueItem(song.id, { id: songId });
+        relinkTrend(song, songId);
+      }
+      const d = await fetchRadio(songId);
+      const list = (d.results || []).map(normalizeSong).filter((s) => s.src);
+      if (!list.length) {
+        p.showToast('No radio tracks found');
+        return;
+      }
+      p.loadQueue(list, 0);
+      p.showToast(d.seed_genre ? `Radio: ${d.seed_genre} • ${list.length} tracks` : `Radio: ${song.title}`);
+    } catch {
+      p.showToast('Could not start radio');
+    }
+  };
+
   // ===== hero (spotlight): pin user dulu, kosong -> most played, masih kosong -> terbaru =====
   const [pins, setPins] = useState(() => heroPins.map(normalizeSong));
   const [pinnedIds, setPinnedIds] = useState(() => new Set((heroPinIds || []).map(String)));
@@ -235,6 +274,9 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
   const cardPlaylistAction = (s) => (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
       {pinBtn(s)}
+      <button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); playRadioFrom(s); }} title="Play radio">
+        <Radio size={14} />
+      </button>
       <button className="mm-icon-btn" style={{ width: 30, height: 30 }} onClick={(e) => { e.stopPropagation(); p.setPlaylistModalSong(s.id); }} title="Save to playlist">
         <Plus size={14} />
       </button>
@@ -483,6 +525,22 @@ export default function Home({ songs = [], trending = [], artists = [], paginati
                 </div>
               );
             })}
+          </div>
+        </>
+      )}
+
+      {/* ===== because you listened ===== */}
+      {reco.length > 0 && (
+        <>
+          <div className="mm-section mm-enter">
+            <Sparkles size={19} style={{ color: '#fbbf24' }} />
+            <span>Because you listened{recoReason.length > 0 ? ` — ${recoReason.slice(0, 2).join(', ')}` : ''}</span>
+            <RowChevrons targetRef={recoRef} />
+          </div>
+          <div className="rt-row mm-enter" ref={recoRef}>
+            {reco.map((s, i) => (
+              <SongCard key={`reco-${s.id}-${i}`} song={s} onPlay={() => playList(reco, i)} action={cardPlaylistAction(s)} />
+            ))}
           </div>
         </>
       )}

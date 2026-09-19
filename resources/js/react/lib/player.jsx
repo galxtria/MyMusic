@@ -16,7 +16,21 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
   const [index, setIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState(false);
+  // repeatMode: 'off' | 'all' | 'one'
+  const [repeatMode, setRepeatMode] = useState(() => {
+    try { return localStorage.getItem('mm-repeat') || 'off'; } catch { return 'off'; }
+  });
+  // Radio autoplay saat antrean habis
+  const [autoplay, setAutoplay] = useState(() => {
+    try {
+      const v = localStorage.getItem('mm-autoplay');
+      return v === null ? true : v === '1';
+    } catch { return true; }
+  });
+  const [queueOpen, setQueueOpen] = useState(false);
+  // Sleep timer: menit tersisa (null = mati)
+  const [sleepLeft, setSleepLeft] = useState(null);
+  const sleepTimerRef = useRef(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -37,15 +51,11 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
   const current = queue[index] ?? null;
   const toastTimer = useRef(null);
 
-  // Identitas user untuk scope persisted state (cegah bocor antrean admin -> user).
-  // Props user saat ini hanya {name, role}; pakai id/email bila tersedia (future-proof).
   const userKey = useMemo(() => {
     if (!user) return 'guest';
     return String(user.id ?? user.email ?? `${user.name ?? ''}|${user.role ?? ''}`);
   }, [user]);
 
-  // Restore TIDAK boleh auto-play. Hanya aksi eksplisit user (klik lagu,
-  // next/prev) yang boleh memutar. Ini cegah "baru login langsung start musik".
   const autoplayRef = useRef(false);
 
   const showToast = useCallback((msg) => {
@@ -94,9 +104,134 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     else el.pause();
   }, [current]);
 
+  // repeat boolean legacy (agar komponen lama tetap jalan): true = 'all'
+  const repeat = repeatMode !== 'off';
+  const setRepeat = useCallback((v) => {
+    setRepeatMode((prev) => {
+      const nextMode = typeof v === 'function' ? (v(prev !== 'off') ? 'all' : 'off') : (v ? 'all' : 'off');
+      try { localStorage.setItem('mm-repeat', nextMode); } catch {}
+      return nextMode;
+    });
+  }, []);
+  const cycleRepeatMode = useCallback(() => {
+    setRepeatMode((prev) => {
+      const n = prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off';
+      try { localStorage.setItem('mm-repeat', n); } catch {}
+      return n;
+    });
+  }, []);
+
+  const toggleAutoplay = useCallback(() => {
+    setAutoplay((v) => {
+      try { localStorage.setItem('mm-autoplay', v ? '0' : '1'); } catch {}
+      return !v;
+    });
+  }, []);
+
+  // ---- Queue management ----
+  const removeFromQueue = useCallback((i) => {
+    setQueue((q) => {
+      const next_ = q.filter((_, idx) => idx !== i);
+      return next_;
+    });
+    setIndex((prev) => {
+      if (i < prev) return prev - 1;
+      if (i === prev) return prev; // current dihapus: index menunjuk lagu berikutnya
+      return prev;
+    });
+  }, []);
+
+  const clearQueue = useCallback(() => {
+    try {
+      audioRef.current?.pause();
+    } catch {}
+    setQueue([]);
+    setIndex(-1);
+    setIsPlaying(false);
+    setQueueOpen(false);
+  }, []);
+
+  const moveQueueItem = useCallback((from, to) => {
+    setQueue((q) => {
+      if (from < 0 || to < 0 || from >= q.length || to >= q.length) return q;
+      const copy = [...q];
+      const [item] = copy.splice(from, 1);
+      copy.splice(to, 0, item);
+      return copy;
+    });
+    setIndex((prev) => {
+      if (prev === from) return to;
+      if (from < prev && to >= prev) return prev - 1;
+      if (from > prev && to <= prev) return prev + 1;
+      return prev;
+    });
+  }, []);
+
+  const playNext = useCallback((song) => {
+    const s = normalizeSong(song);
+    setQueue((q) => {
+      const copy = [...q];
+      copy.splice(index + 1, 0, s);
+      return copy;
+    });
+    showToast('Will play next');
+  }, [index, showToast]);
+
+  // ---- Sleep timer ----
+  const setSleepTimer = useCallback((mins) => {
+    if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
+    if (!mins) {
+      setSleepLeft(null);
+      return;
+    }
+    setSleepLeft(mins);
+    showToast(`Sleep timer: ${mins} min`);
+    sleepTimerRef.current = setTimeout(() => {
+      try { audioRef.current?.pause(); } catch {}
+      setIsPlaying(false);
+      setSleepLeft(null);
+      showToast('Sleep timer ended — paused');
+    }, mins * 60 * 1000);
+  }, [showToast]);
+
+  useEffect(() => () => { if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current); }, []);
+
+  // ---- Ended handler: repeat-one / repeat-all / autoplay radio ----
+  const handleEnded = useCallback(() => {
+    const el = audioRef.current;
+    if (repeatMode === 'one') {
+      if (el) { el.currentTime = 0; el.play().catch(() => {}); }
+      return;
+    }
+    const isLast = index >= queue.length - 1;
+    if (!isLast) {
+      next();
+      return;
+    }
+    if (repeatMode === 'all' && queue.length > 0) {
+      autoplayRef.current = true;
+      setIndex(0);
+      return;
+    }
+    // Autoplay radio: cari lagu se-genre/se-artis (tanpa tambalan acak).
+    if (autoplay && current?.id != null && !String(current.id).startsWith('yt-') && !Number.isNaN(Number(current.id))) {
+      fetch(`/api/radio/${current.id}`, { headers: { Accept: 'application/json' } })
+        .then((r) => r.json())
+        .then((d) => {
+          const list = (d.results || []).map(normalizeSong).filter((s) => s.src);
+          if (list.length === 0) return;
+          autoplayRef.current = true;
+          setQueue((q) => [...q, ...list]);
+          setIndex(queue.length); // mulai dari radio pertama
+          showToast(d.seed_genre ? `Radio autoplay: ${d.seed_genre}` : 'Radio autoplay — keep listening');
+        })
+        .catch(() => {});
+      return;
+    }
+    setIsPlaying(false);
+  }, [repeatMode, index, queue.length, next, autoplay, current]);
+
   // Load song into audio element when index changes.
-  // Hasil restore (autoplayRef=false) hanya menyiapkan src + posisi, TANPA play.
-  // Aksi eksplisit user (loadQueue/playAt/next/prev) set autoplayRef=true -> play.
   useEffect(() => {
     const el = audioRef.current;
     if (!el || !current) return;
@@ -108,7 +243,6 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     el.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
   }, [current]);
 
-  // Volume (diterapkan ke audio + disimpan agar tidak reset pindah halaman).
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
     try { localStorage.setItem('mm-volume', String(volume)); } catch {}
@@ -130,9 +264,6 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     fetchLyrics(current.title, current.artist)
       .then((d) => {
         let synced = d.syncedLyrics ? parseLrc(d.syncedLyrics) : [];
-        // Lagu API (YouTube) sering beda versi dengan rekaman studio yang dipakai
-        // LRCLIB (live, intro tambahan, speed berbeda). Tolak timestamp yang durasi
-        // lagunya beda jauh dari audio yang diputar, pakai teks biasa saja.
         try {
           const elDur = audioRef.current?.duration;
           const libDur = Number(d.duration);
@@ -157,10 +288,6 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     });
   }, []);
 
-  // Catat play ke server (fire-and-forget).
-  // Hanya dihitung saat audio benar-benar berbunyi (bukan restore/paused).
-  // Lagu online (yt-) dibuatkan stub DB dulu agar masuk riwayat + most played,
-  // lalu item antrean di-relink ke id numerik.
   const countedForRef = useRef(null);
   useEffect(() => {
     if (!current || !isPlaying) return;
@@ -175,11 +302,10 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     };
     const id = current.id;
     if (typeof id === 'string' && id.startsWith('yt-')) {
-      // raw bisa bersarang (hasil remap normalizeSong) atau kompak (hasil restore).
       const raw = current.raw;
       const piped = raw && raw.url ? raw : raw && raw.raw;
       if (!piped || !piped.url) return;
-      countedForRef.current = key; // kunci segera, cegah hit ganda selama async
+      countedForRef.current = key;
       addYouTubeToLibrary(piped)
         .then((d) => {
           const songId = d.song?.id;
@@ -194,7 +320,6 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     postPlay(id);
   }, [current, isPlaying]);
 
-  // Simpan + pulihkan antrean agar musik survive pindah halaman.
   const resumeTimeRef = useRef(null);
   const consumeResumeTime = useCallback(() => {
     const t = resumeTimeRef.current;
@@ -204,15 +329,10 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
 
   const persistState = useCallback(() => {
     try {
-      // Jangan simpan ulang saat proses logout (mencegah state ditulis balik
-      // setelah dikosongkan oleh handler logout).
       if (typeof window !== 'undefined' && window.__mm_logging_out) return;
       const el = audioRef.current;
-      // eslint-disable-next-line no-unused-vars
       const slim = queue.map((s) => {
         const { raw, ...rest } = s;
-        // Simpan metadata API versi kompak agar lagu online hasil restore
-        // tetap bisa dibuatkan stub (untuk statistik).
         const piped = raw && raw.url ? raw : raw && raw.raw;
         if (piped && piped.url) {
           return { ...rest, raw: { url: piped.url, title: piped.title, uploaderName: piped.uploaderName, thumbnail: piped.thumbnail, duration: piped.duration } };
@@ -234,7 +354,6 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
       if (!rawState) return;
       const data = JSON.parse(rawState);
       if (!Array.isArray(data.queue) || data.queue.length === 0) return;
-      // Beda user (mis. admin logout -> login sebagai user) -> buang antrean lama.
       if (data.userKey && data.userKey !== userKey) {
         try { localStorage.removeItem(PLAYER_STORAGE_KEY); } catch {}
         return;
@@ -259,15 +378,9 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     };
   }, [persistState]);
 
-  // Geser timing lirik per lagu (detik, + = lirik dimajukan). Audio YouTube
-  // sering beda versi dengan timestamp LRCLIB, jadi user bisa kalibrasi manual
-  // sekali dan tersimpan di browser.
   const OFFSET_KEY = 'mm-lyrics-offset-v1';
-  // Ganti identitas item antrean (mis. lagu online yt-xxx -> id DB numerik
-  // setelah dibuatkan stub) tanpa mengganggu pemutaran.
   const relinkQueueItem = useCallback((oldId, patch) => {
     setQueue((q) => q.map((s) => (String(s.id) === String(oldId) ? { ...s, ...patch } : s)));
-    // Id lagu online berubah (yt-xxx -> id numerik): pindahkan offset lirik tersimpan.
     if (patch && patch.id != null && String(patch.id) !== String(oldId)) {
       try {
         const all = JSON.parse(localStorage.getItem(OFFSET_KEY) || '{}');
@@ -279,9 +392,6 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
     }
   }, []);
 
-  // Geser timing lirik per lagu (detik, + = lirik dimajukan). Audio YouTube
-  // sering beda versi dengan timestamp LRCLIB, jadi user bisa kalibrasi manual
-  // sekali dan tersimpan di browser.
   const [lyricsOffset, setLyricsOffset] = useState(0);
   useEffect(() => {
     if (!current) return;
@@ -313,13 +423,16 @@ export function PlayerProvider({ children, initialFavorites = [], user = null })
 
   const value = useMemo(() => ({
     audioRef, queue, index, current, isPlaying, setIsPlaying,
-    shuffle, setShuffle, repeat, setRepeat,
+    shuffle, setShuffle, repeat, setRepeat, repeatMode, setRepeatMode, cycleRepeatMode,
+    autoplay, toggleAutoplay,
+    queueOpen, setQueueOpen, removeFromQueue, clearQueue, moveQueueItem, playNext,
+    sleepLeft, setSleepTimer, handleEnded,
     progress, setProgress, duration, setDuration, currentTime, setCurrentTime,
     volume, setVolume, toast, showToast, lyricsOpen, setLyricsOpen,
     lyrics, lyricsLoading, lyricsOffset, shiftLyricsOffset, resetLyricsOffset,
     playlistModalSong, setPlaylistModalSong,
     likedIds, isFavorite, markLiked, relinkQueueItem, consumeResumeTime, loadQueue, playAt, next, prev, toggle,
-  }), [queue, index, current, isPlaying, shuffle, repeat, progress, duration, currentTime, volume, toast, showToast, lyricsOpen, lyrics, lyricsLoading, lyricsOffset, shiftLyricsOffset, resetLyricsOffset, playlistModalSong, likedIds, isFavorite, markLiked, relinkQueueItem, consumeResumeTime, loadQueue, playAt, next, prev, toggle]);
+  }), [queue, index, current, isPlaying, shuffle, repeat, repeatMode, autoplay, queueOpen, sleepLeft, progress, duration, currentTime, volume, toast, showToast, lyricsOpen, lyrics, lyricsLoading, lyricsOffset, shiftLyricsOffset, resetLyricsOffset, playlistModalSong, likedIds, isFavorite, markLiked, relinkQueueItem, consumeResumeTime, loadQueue, playAt, next, prev, toggle, removeFromQueue, clearQueue, moveQueueItem, playNext, setSleepTimer, handleEnded, setRepeat, cycleRepeatMode, toggleAutoplay]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
