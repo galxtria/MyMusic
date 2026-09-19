@@ -58,6 +58,7 @@ class SongController extends Controller
             'm4a', 'aac' => 'audio/mp4',
             'wav' => 'audio/wav',
             'ogg', 'oga' => 'audio/ogg',
+            'webm', 'weba' => 'audio/webm',
             'flac' => 'audio/flac',
             default => 'audio/mpeg',
         };

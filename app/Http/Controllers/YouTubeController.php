@@ -86,8 +86,54 @@ class YouTubeController extends Controller
     }
 
     /**
-     * Jalankan yt-dlp --get-url. Coba format m4a dulu, fallback ke bestaudio/best.
-     * Return URL atau null. Tidak pernah throw.
+     * Strategi player client YouTube, dari paling ringan ke terberat.
+     * Beberapa video (terutama rilisan label) menolak client default dan
+     * hanya lolos lewat client lain / sesi login (cookies.txt).
+     */
+    private function ytClientCascade(): array
+    {
+        return [
+            '',
+            '--extractor-args "youtube:player_client=android"',
+            '--extractor-args "youtube:player_client=ios"',
+            '--extractor-args "youtube:player_client=tv"',
+            '--extractor-args "youtube:player_client=web_embedded"',
+        ];
+    }
+
+    private function ytCookiesArg(): string
+    {
+        $cookies = base_path('cookies.txt');
+        return file_exists($cookies) ? ' --cookies "' . $cookies . '"' : '';
+    }
+
+    /**
+     * Jalankan yt-dlp dan kembalikan [stdout, baris-error-terakhir].
+     * stderr TIDAK dibuang agar penyebab asli tercatat di log.
+     */
+    private function runYtDlp(string $args, string $url): array
+    {
+        $binary = base_path('yt-dlp.exe');
+        $errFile = tempnam(sys_get_temp_dir(), 'ytdl');
+        $cmd = '"' . $binary . '" --no-warnings --no-playlist --retries 2 --socket-timeout 15'
+            . $this->ytCookiesArg() . ' ' . $args . ' ' . escapeshellarg($url) . ' 2> "' . $errFile . '"';
+        $out = [];
+        $code = 0;
+        exec($cmd, $out, $code);
+        $lastErr = '';
+        $err = @file_get_contents($errFile);
+        @unlink($errFile);
+        if ($err) {
+            $lines = array_values(array_filter(array_map('trim', explode("\n", $err))));
+            $lastErr = end($lines) ?: '';
+        }
+        return [implode("\n", $out), $lastErr, $code];
+    }
+
+    /**
+     * Jalankan yt-dlp --get-url. Coba format m4a dulu, fallback ke best,
+     * tiap format dicoba ke semua player client. Return URL atau null.
+     * Tidak pernah throw.
      */
     private function resolveStreamUrl(string $query): ?string
     {
@@ -96,17 +142,18 @@ class YouTubeController extends Controller
             return null;
         }
         foreach (['bestaudio[ext=m4a]/bestaudio/best', 'best'] as $format) {
-            try {
-                // Use double quotes for the binary path and arguments to ensure Windows compatibility
-                $cmd = '"' . $binary . '" --no-warnings -f ' . escapeshellarg($format) . ' --get-url ' . escapeshellarg($query) . ' 2> NUL';
-                $output = shell_exec($cmd);
-                if ($output) {
-                    $lines = array_filter(explode("\n", trim($output)));
-                    $url = end($lines);
-                    if ($url && filter_var($url, FILTER_VALIDATE_URL)) return $url;
+            foreach ($this->ytClientCascade() as $client) {
+                try {
+                    // Use double quotes for the binary path and arguments to ensure Windows compatibility
+                    [$output, $lastErr] = $this->runYtDlp('-f ' . escapeshellarg($format) . ' --get-url ' . $client, $query);
+                    if ($output) {
+                        $lines = array_filter(explode("\n", trim($output)));
+                        $url = end($lines);
+                        if ($url && filter_var($url, FILTER_VALIDATE_URL)) return $url;
+                    }
+                } catch (\Throwable $e) {
+                    continue;
                 }
-            } catch (\Throwable $e) {
-                continue;
             }
         }
         return null;
@@ -370,30 +417,43 @@ class YouTubeController extends Controller
 
         $slug = Str::slug(Str::limit($request->title, 40, '')) ?: 'track';
         $stamp = time();
-        $audioName = "{$stamp}_{$slug}_{$request->videoId}.m4a";
-        $audioRel = 'music/' . $audioName;
+        $stem = "{$stamp}_{$slug}_{$request->videoId}";
+        $musicDir = public_path('music');
+        // Bersihkan sisa percobaan lama agar resume tidak korup lintas format.
+        foreach ((array) glob($musicDir . DIRECTORY_SEPARATOR . $stem . '.*') as $old) @unlink($old);
+        $outFlag = '-o "' . $musicDir . DIRECTORY_SEPARATOR . $stem . '.%(ext)s"';
 
         // Unduh audio (butuh waktu 10-60 detik tergantung durasi/koneksi).
-        // Catatan: YouTube memblokir unduhan dari IP yang dicurigai (403).
-        // Jika ada cookies.txt (ekspor via ekstensi "Get cookies.txt LOCALLY"),
-        // sesi login dipakai agar unduhan lolos.
+        // Beberapa video menolak client default — coba berurutan semua
+        // strategi. Client utama minta m4a; client cadangan terima format
+        // audio apa pun (ekstensi file mengikuti hasil nyata).
         set_time_limit(300);
         $url = 'https://www.youtube.com/watch?v=' . $request->videoId;
-        $cookies = base_path('cookies.txt');
-        $cmd = '"' . $binary . '" --no-warnings --no-playlist --retries 2 --socket-timeout 15'
-            . (file_exists($cookies) ? ' --cookies "' . $cookies . '"' : '')
-            . ' -f "bestaudio[ext=m4a]/bestaudio/best"'
-            . ' -o "' . public_path('music') . DIRECTORY_SEPARATOR . $audioName . '"'
-            . ' ' . escapeshellarg($url) . ' 2> NUL';
-        shell_exec($cmd);
+        $lastErr = '';
+        $audioName = null;
+        foreach ($this->ytClientCascade() as $client) {
+            $format = $client === '' ? '"bestaudio[ext=m4a]/bestaudio/best"' : '"bestaudio/best"';
+            [$dlOut, $dlErr] = $this->runYtDlp('-f ' . $format . ' ' . $outFlag . ' ' . $client, $url);
+            if ($dlErr) $lastErr = $dlErr;
+            foreach ((array) glob($musicDir . DIRECTORY_SEPARATOR . $stem . '.*') as $f) {
+                if (preg_match('/\.(part|ytdl|temp)$/', $f)) continue;
+                if (filesize($f) >= 1024) { $audioName = basename($f); break 2; }
+            }
+        }
+        $audioRel = $audioName ? 'music/' . $audioName : null;
 
-        $audioFull = public_path($audioRel);
-        if (!file_exists($audioFull) || filesize($audioFull) < 1024) {
-            if (file_exists($audioFull)) @unlink($audioFull);
-            $hint = file_exists($cookies)
-                ? 'Coba lagi nanti atau ganti video.'
-                : 'YouTube memblokir unduhan (403). Ekspor cookies via ekstensi "Get cookies.txt LOCALLY", simpan sebagai cookies.txt di folder web, lalu coba lagi.';
-            return response()->json(['message' => 'Gagal mengunduh audio. ' . $hint], 500);
+        $audioFull = $audioRel ? public_path($audioRel) : null;
+        if (!$audioFull || !file_exists($audioFull) || filesize($audioFull) < 1024) {
+            foreach ((array) glob($musicDir . DIRECTORY_SEPARATOR . $stem . '.*') as $f) @unlink($f);
+            // Catat penyebab asli agar bisa didiagnosis (tidak lagi 2> NUL buta).
+            \Illuminate\Support\Facades\Log::warning('yt-dlp import gagal', [
+                'videoId' => $request->videoId, 'last_error' => $lastErr,
+            ]);
+            $reason = $lastErr ? " (YouTube: {$lastErr})" : '';
+            $hint = file_exists(base_path('cookies.txt'))
+                ? 'Coba lagi nanti atau ganti video lain.'
+                : 'Video ini dijaga login YouTube. Ekspor cookies via ekstensi "Get cookies.txt LOCALLY" (pilih youtube.com), simpan sebagai cookies.txt di folder web ini, lalu coba lagi. Atau coba video (upload) lain dari artis yang sama.';
+            return response()->json(['message' => "Gagal mengunduh audio{$reason}. " . $hint], 500);
         }
 
         // Unduh cover.
