@@ -310,9 +310,6 @@ function PlayerBar() {
         </div>
         <span className="mm-only-mobile">{current && <LikeButton songId={current.id} size={17} />}</span>
         <button className="mm-icon-btn mm-only-mobile-btn" onClick={() => current && p.setLyricsOpen(true)} title="Lyrics" style={{ width: 34, height: 34 }}><Mic size={15} /></button>
-        <button className="mm-play-fab mm-only-mobile-btn" onClick={p.toggle} title="Play / Pause" disabled={!current}>
-          {p.isPlaying ? <Pause size={17} /> : <Play size={17} style={{ marginLeft: 2 }} />}
-        </button>
       </div>
 
       <div className="mm-pb-center">
@@ -336,6 +333,19 @@ function PlayerBar() {
           />
           <span style={timeStyle}>{formatTime(p.duration)}</span>
         </div>
+      </div>
+
+      {/* Transport khusus mobile: shuffle, prev, play, next, repeat. */}
+      <div className="mm-pb-mtransport">
+        <button onClick={() => p.setShuffle((v) => !v)} title="Shuffle" style={ghostBtn}>
+          <Shuffle size={18} color={p.shuffle ? '#fff' : undefined} opacity={p.shuffle ? 1 : 0.55} />
+        </button>
+        <button onClick={p.prev} title="Previous" style={ghostBtn}><SkipBack size={20} /></button>
+        <button className="mm-play-fab" onClick={p.toggle} title="Play / Pause" disabled={!current}>
+          {p.isPlaying ? <Pause size={20} /> : <Play size={20} style={{ marginLeft: 2 }} />}
+        </button>
+        <button onClick={p.next} title="Next" style={ghostBtn}><SkipForward size={20} /></button>
+        <RepeatButton />
       </div>
 
       <div className="mm-pb-right mm-hide-mobile">

@@ -489,6 +489,16 @@ img { object-fit: cover; }
   .mm-pb-progress { width: 100%; }
 }
 
+/* Transport bar khusus mobile (shuffle/prev/play/next/repeat). */
+.mm-pb-mtransport { display: none; }
+@media (max-width: 768px) {
+  .mm-pb-mtransport {
+    display: flex; align-items: center; justify-content: space-evenly;
+    width: 100%; padding-top: 4px;
+  }
+  .mm-pb-mtransport .mm-play-fab { width: 54px; height: 54px; flex-shrink: 0; }
+}
+
 /* ================= collection refresh: categories / library / liked / playlist ================= */
 
 /* Genre tiles (flat solid colors, Spotify-style). */
