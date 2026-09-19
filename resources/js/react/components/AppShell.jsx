@@ -475,7 +475,7 @@ function LyricsOverlay() {
           )}
           <div className="mm-lp-head">
             <div className="mm-lp-title">{p.current?.title || 'No track'}</div>
-            <div className="mm-lp-sub">{p.current ? `${p.current.artist}${p.current.genre ? ` — ${p.current.genre}` : ''}` : ''}</div>
+            <div className="mm-lp-sub">{p.current?.artist || ''}</div>
           </div>
           <div className="mm-lp-times">
             <span>{formatTime(p.currentTime)}</span>

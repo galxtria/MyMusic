@@ -52,6 +52,8 @@ class LyricsFixer
     /**
      * Cari LRC terbaik. $preferKorean=true mengutamakan yang ada Hangul
      * (untuk K-Pop), tapi tetap menerima non-Hangul bila tak ada yang cocok.
+     * Semua kandidat (direct + search) dinilai, skor tertinggi menang —
+     * versi yang lebih lengkap (baris lebih banyak) diberi bonus.
      * Return ['lrc' => string, 'info' => string] untuk logging.
      */
     public static function bestSynced(string $title, string $artist, int $durationSecs = 0, bool $preferKorean = false): array
@@ -60,32 +62,32 @@ class LyricsFixer
         $a = self::cleanArtist($artist);
         if ($t === '') return ['lrc' => '', 'info' => 'empty-title'];
 
-        // 1) Kecocokan langsung.
+        $pool = [];
+        // 1) Kecocokan langsung — masuk pool kandidat, bukan vonis akhir.
         try {
             $res = Http::timeout(15)->get('https://lrclib.net/api/get', [
                 'artist_name' => $a, 'track_name' => $t,
             ]);
-            if ($res->successful()) {
-                $got = self::scoreOne($res->json(), $t, $durationSecs, $preferKorean);
-                if ($got['lrc'] !== '') return $got;
-            }
+            if ($res->successful() && is_array($res->json())) $pool[] = $res->json();
         } catch (\Throwable $e) {
         }
 
-        // 2) Daftar kandidat: pilih skor tertinggi.
+        // 2) Daftar kandidat search — nilai semua, skor tertinggi menang.
         try {
             $res = Http::timeout(15)->get('https://lrclib.net/api/search', ['q' => trim("$t $a")]);
-            if (!$res->successful() || !is_array($res->json())) return ['lrc' => '', 'info' => 'no-candidates'];
-            $best = ['lrc' => '', 'info' => 'no-match', 'score' => -1];
-            foreach ($res->json() as $item) {
-                $got = self::scoreOne($item, $t, $durationSecs, $preferKorean);
-                if (($got['score'] ?? -1) > $best['score']) $best = $got;
+            if ($res->successful() && is_array($res->json())) {
+                foreach ($res->json() as $item) $pool[] = $item;
             }
-            unset($best['score']);
-            return $best;
         } catch (\Throwable $e) {
         }
-        return ['lrc' => '', 'info' => 'error'];
+        if (empty($pool)) return ['lrc' => '', 'info' => 'no-candidates'];
+        $best = ['lrc' => '', 'info' => 'no-match', 'score' => -1];
+        foreach ($pool as $item) {
+            $got = self::scoreOne($item, $t, $durationSecs, $preferKorean);
+            if (($got['score'] ?? -1) > $best['score']) $best = $got;
+        }
+        unset($best['score']);
+        return $best;
     }
 
     private static function scoreOne($item, string $wantTitle, int $durationSecs, bool $preferKorean): array
@@ -118,6 +120,10 @@ class LyricsFixer
             $flags[] = 'variant';
         }
         if ($diff !== null) $score -= $diff; // makin mirip durasi makin bagus
+        // Bonus kelengkapan: versi 142 baris mengalahkan versi 57 baris
+        // bila judul & durasi sama-sama cocok (maks +15).
+        $lines = self::timestampLines($lrc);
+        $score += min($lines, 150) / 10;
 
         $info = ($item['trackName'] ?? '?') . ' / ' . ($item['artistName'] ?? '?')
             . ($diff !== null ? sprintf(' (Δ%.0fs', $diff) . ')' : '')
